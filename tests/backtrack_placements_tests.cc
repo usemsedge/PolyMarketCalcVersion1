@@ -5,7 +5,6 @@
 
 // Exclusively for testing backtracking
 
-
 /*
 Creates a very simple map with 1 city 0 buildings 0 markets
   |____
@@ -58,8 +57,6 @@ BacktrackState makeTinyState0Building0Market() {
     curMarketsSet,
   };
 }
-
-
 
 /*
 Creates a very simple map with 1 city 1 buildings 0 markets
@@ -117,7 +114,6 @@ BacktrackState makeTinyState1Building0Market() {
     curMarketsSet,
   };
 }
-
 
 /*
 Creates a very simple map with 1 city 1 buildings 1 market
@@ -219,4 +215,54 @@ TEST(backtrackPlacements, Tiny0Building0Market_2Deep_PlaceMarket) {
 
   EXPECT_EQ(2, resultState.bestMarketTotal);
   EXPECT_TRUE(expectedMap1 == resultState.bestLayout || expectedMap2 == resultState.bestLayout);
+}
+
+TEST(backtrackPlacements, 2CitiesMaxMarkets) {
+  vector<vector<TileState>> map = {
+    {T(0, EMPTY), T(0, RESOURCE), T(0, RESOURCE), T(1, RESOURCE), T(1, RESOURCE), T(1, EMPTY)},
+    {T(0, EMPTY), T(0, CITY), T(0, RESOURCE), T(1, RESOURCE), T(1, CITY), T(1, EMPTY)},
+    {T(0, EMPTY), T(0, RESOURCE), T(0, RESOURCE), T(1, RESOURCE), T(1, RESOURCE), T(1, EMPTY)},
+  };
+  vector<Coord> cityCenters = {
+    Coord{1, 1},
+    Coord{1, 4},
+  };
+  unordered_map<int, vector<Coord>> tilesOwnedByCity = {
+    {0, 
+      {Coord{0, 0}, Coord{0, 1}, Coord{0, 2}, 
+      Coord{1, 0}, Coord{1, 1}, Coord{1, 2}, 
+      Coord{2, 0}, Coord{2, 1}, Coord{2, 2}}
+    },
+    {1, 
+      {Coord{0, 3}, Coord{0, 4}, Coord{0, 5},
+       Coord{1, 3}, Coord{1, 4}, Coord{1, 5},
+        Coord{2, 3}, Coord{2, 4}, Coord{2, 5}}
+    },
+  };
+  BacktrackState state{
+    map,
+    cityCenters,
+    tilesOwnedByCity,
+
+    {}, {}, {}, {},
+  };
+
+  BacktrackResult resultState = backtrackPlacements(state, 0, true);
+
+  std::cout << "done" << std::endl;
+
+  EXPECT_EQ(16, resultState.bestMarketTotal);
+
+  vector<vector<TileState>> res = resultState.bestLayout;
+
+  // Expect 2 bulidings between the cities
+  EXPECT_EQ(BUILDING, res[1][2].type);
+  EXPECT_EQ(BUILDING, res[1][3].type);
+
+  // Expect 2 markets, each city's market has 2 possible spots
+  EXPECT_TRUE((res[0][2].type == MARKET) != (res[2][2].type == MARKET));
+  EXPECT_TRUE((res[0][3].type == MARKET) != (res[2][3].type == MARKET));
+
+
+  
 }

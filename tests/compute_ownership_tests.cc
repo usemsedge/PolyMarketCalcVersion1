@@ -139,3 +139,22 @@ TEST(computeOwnership, FullScenario) {
   computeOwnership(map, cityCenters, actionOrder);
   EXPECT_EQ(map, expectedResult);
 }
+
+TEST(computeOwnership, UnclaimedVillage) {
+  vector<vector<TileState>> map = {
+    {T(-1, EMPTY), T(-1, EMPTY), T(-1, EMPTY), T(-1, EMPTY)},
+    {T(-1, CITY), T(-1, EMPTY), T(-1, EMPTY), T(-1, CITY)},
+    {T(-1, EMPTY), T(-1, EMPTY), T(-1, EMPTY), T(-1, EMPTY)},
+  };
+  // Only one city is claimed, then it grows
+  vector<Coord> cityCenters = {Coord{1, 0}};
+  vector<int> actionOrder = {0, 0};
+
+  vector<vector<TileState>> expectedResult = {
+    {T(0, EMPTY), T(0, EMPTY), T(0, EMPTY), T(-1, EMPTY)},
+    {T(0, CITY), T(0, EMPTY), T(0, EMPTY), T(-1, CITY)},
+    {T(0, EMPTY), T(0, EMPTY), T(0, EMPTY), T(-1, EMPTY)},
+  };
+  computeOwnership(map, cityCenters, actionOrder);
+  EXPECT_EQ(map, expectedResult);
+}

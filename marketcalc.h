@@ -234,4 +234,30 @@ Rules:
 int calculateMarketTotal(const BacktrackState& state);
 
 
+/*
+Given a map and a capture/growth order, find the best market layout.
+Throw errors if invalid input is given.
+  (e.g. cities too close, too many buildings/markets placed, invalid city IDs, 
+  cityCenters does not match with map, etc.)
+
+Args:
+map: 2D grid of ints representing tile types (EMPTY, CITY, OBSTACLE, RESOURCE)
+cityCenters: list of (row, col) coordinates for city centers which are claimed
+      cityCenters[i] corresponds to city ID i
+vector<int> actionOrder: order in which each city is captured and border growths 
+      (SAME DEF AS COMPUTEOWNERSHIP)
+      The first occurence of a city ID captures the city
+      The second occurence of a city ID border growths
+      All city IDs in cityCenters must appear in the map (but not necessarily the other way around).
+      All city IDs in actionOrder must be in cityCenters.
+      All city IDs in cityCenters must appear at least once in actionOrder, but at most twice.
+
+Return:
+BacktrackResult containing the best market total found and the corresponding layout
+*/
+BacktrackResult findBestMarketLayout(vector<vector<int>>& map, 
+                                    const vector<Coord>& cityCenters,
+                                    const vector<int>& actionOrder);
+
+
 #endif // MARKETCALC_H_

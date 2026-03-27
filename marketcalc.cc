@@ -19,30 +19,19 @@ using std::unordered_set;
 
 
 
-
+/*
+Helper function
+Checks if a coordinate is within the bounds of the map
+*/
 bool inBounds(const vector<vector<TileState>>& map, Coord coord) {
     int height = map.size();
     int width = map[0].size();
     return coord.row >= 0 && coord.row < height && coord.col >= 0 && coord.col < width;
 }
 
-// Find all city centers from the map
-// Guarenteed to be the same order every time (top to bottom, left to right)
-// so that city IDs are consistent when using border growth order
-vector<Coord> findCityCenters(const vector<vector<TileState>>& map) {
-    vector<Coord> centers;
-    int height = map.size();
-    int width = map[0].size();
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            if (map[y][x].type == CITY) {
-                centers.push_back(Coord{y, x});
-            }
-        }
-    }
-    return centers;
-}
-
+/*
+Defined in marketcalc.h
+*/
 void computeOwnership(vector<vector<TileState>>& map, 
                       const vector<Coord>& cityCenters,
                       const vector<int>& actionOrder) {
@@ -133,9 +122,9 @@ bool canPlaceMarket(const BacktrackState& state, Coord coord) {
 
   // Check adjacency to at least one building tile
   for (int i = 0; i < BASE_TILE_COUNT; i++) {
-    int nx = row + dx[i];
-    int ny = col + dy[i];
-    Coord adjacentCoord = {nx, ny};
+    int ny = row + dx[i];
+    int nx = col + dy[i];
+    Coord adjacentCoord = {ny, nx};
     if (inBounds(state.map, adjacentCoord) &&
        state.curBuildingsSet.find(adjacentCoord) != state.curBuildingsSet.end()) {
       return true;
@@ -184,7 +173,7 @@ bool canPlaceBuilding(const BacktrackState& state, Coord coord) {
   for (int i = 0; i < BASE_TILE_COUNT; i++) {
     int nx = col + dx[i];
     int ny = row + dy[i];
-    Coord adjacentCoord = {nx, ny};
+    Coord adjacentCoord = {ny, nx};
     if (inBounds(state.map, adjacentCoord) &&
        (state.map[ny][nx].type == RESOURCE || 
        state.map[ny][nx].type == USED_RESOURCE) && 
@@ -207,7 +196,6 @@ BacktrackResult backtrackPlacements(BacktrackState& state, int cityIdx, bool pla
   // Base case (step 3): cityIdx is at the end and placingBuilding is false, calculate market total
 
   if (!placingBuilding && cityIdx == (int)state.cityCenters.size()) {
-    // TODO: we need to generate the map
     vector<vector<TileState>> finalMap = state.map;
     for (const auto& building : state.curBuildingsSet) {
       finalMap[building.row][building.col].type = BUILDING;
@@ -215,6 +203,7 @@ BacktrackResult backtrackPlacements(BacktrackState& state, int cityIdx, bool pla
     for (const auto& market : state.curMarketsSet) {
       finalMap[market.row][market.col].type = MARKET;
     }
+    std::cout << "Calculated market total: " << calculateMarketTotal(state) << std::endl;
     return BacktrackResult {
       calculateMarketTotal(state),
       finalMap,
@@ -291,6 +280,10 @@ BacktrackResult backtrackPlacements(BacktrackState& state, int cityIdx, bool pla
     throw std::invalid_argument("Invalid state in backtrackPlacements: placingBuilding is " + std::to_string(placingBuilding) + " and cityIdx is " + std::to_string(cityIdx));
   }
 
+  std::cout << "Best market total for cityIdx " << cityIdx << " and placingBuilding " << placingBuilding << ": " << bestResult.bestMarketTotal << std::endl;
+  if (cityIdx == 1 && placingBuilding && bestResult.bestMarketTotal == 16) {
+    std::cout << "BREAKPOINT" << std::endl;
+  }
   return bestResult;
 }
 
@@ -336,6 +329,29 @@ int calculateMarketTotal(const BacktrackState& state) {
   }
 
   return totalMarketLevel;
+}
+
+/*
+Defined in marketcalc.h
+*/
+BacktrackResult findBestMarketLayout(vector<vector<int>>& map, 
+                                    const vector<Coord>& cityCenters,
+                                    const vector<int>& actionOrder) {
+  // Create tileState map from raw tile map
+  vector<vector<TileState>> tileMap(map.size(), vector<TileState>(map[0].size()));
+  for (int i = 0; i < (int)map.size(); i++) {
+    for (int j = 0; j < (int)map[0].size(); j++) {
+      tileMap[i][j] = TileState{-1, map[i][j]};
+    } 
+  }
+
+  // Get ownership
+  computeOwnership(tileMap, cityCenters, actionOrder);
+
+  return BacktrackResult{
+    0,
+    tileMap,
+  };
 }
 
 /*

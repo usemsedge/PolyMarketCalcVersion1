@@ -2,7 +2,7 @@ CXX = g++
 GTEST_PREFIX = /opt/homebrew/opt/googletest
 GTEST_INC = $(GTEST_PREFIX)/include
 GTEST_LIB = $(GTEST_PREFIX)/lib
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -I$(GTEST_INC) -I. -Itests
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -g -I$(GTEST_INC) -I. -Itests
 
 TARGET = marketcalc_tests
 TEST_SRC = $(wildcard tests/*_tests.cc)
