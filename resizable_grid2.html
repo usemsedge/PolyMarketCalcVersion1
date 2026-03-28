@@ -33,7 +33,7 @@
     .v-bar.right { grid-row: 2; grid-column: 3; }
     #grid-wrapper { grid-row: 2; grid-column: 2; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 8px; position: relative; }
     #grid-container { display: grid; position: relative; }
-    #border-svg { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
+    #border-svg { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; z-index: 100;}
 
     .btn {
       width: 32px; height: 32px; background: #4285f4; color: white;
@@ -483,7 +483,7 @@ function renderBorders() {
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.innerHTML = '';
 
-  const stroke = Math.max(3, Math.round(cellSize * 0.045));
+  const stroke = Math.max(3, Math.round(cellSize * 0.1));
 
   Object.entries(tilesOwnedByCity).forEach(([idxStr, tiles]) => {
     const idx = parseInt(idxStr);
