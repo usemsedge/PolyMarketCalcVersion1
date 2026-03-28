@@ -51,6 +51,8 @@ struct Coord {
   }
 };
 
+
+
 namespace std {
   template <>
   struct hash<Coord> {

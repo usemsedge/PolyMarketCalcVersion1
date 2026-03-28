@@ -1,60 +1,755 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WASM Vector Sum</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grid Editor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #f0f0f0;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    #outer { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+    #top-row { display: flex; flex-direction: row; align-items: stretch; gap: 12px; width: 100%; }
+
+    #root {
+      flex: 1; min-width: 0;
+      background: white; border: 1px solid #ccc;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      grid-template-columns: auto 1fr auto;
+    }
+    .corner { width: 48px; height: 48px; }
+    .h-bar { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 0; }
+    .h-bar.top { grid-row: 1; grid-column: 2; }
+    .h-bar.bot { grid-row: 3; grid-column: 2; }
+    .v-bar { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; }
+    .v-bar.left  { grid-row: 2; grid-column: 1; }
+    .v-bar.right { grid-row: 2; grid-column: 3; }
+    #grid-wrapper { grid-row: 2; grid-column: 2; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 8px; position: relative; }
+    #grid-container { display: grid; position: relative; }
+    #border-svg { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; z-index: 100;}
+
+    .btn {
+      width: 32px; height: 32px; background: #4285f4; color: white;
+      border: none; border-radius: 4px; font-size: 18px; font-weight: 500;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .btn:hover { background: #3071e8; }
+    .btn:active { transform: scale(0.95); }
+
+    .cell { position: relative; border: 0.5px solid #bbb; overflow: hidden; cursor: pointer; flex-shrink: 0; background: transparent; }
+    .cell.flashing { background-color: #e53935 !important; }
+    .cell.flashing .cell-bg, .cell.flashing .cell-overlay { opacity: 0.35; }
+    .cell:hover { outline: 2px solid #4285f4; outline-offset: -2px; }
+    .cell.no-upgrade { cursor: not-allowed; }
+    .cell.no-upgrade:hover { outline: 2px solid #e53935; outline-offset: -2px; }
+    .cell .cell-bg, .cell .cell-overlay {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; display: block;
+    }
+    .cell .cell-bg { z-index: 1; }
+    .cell .cell-overlay { z-index: 2; }
+
+    #sidebar {
+      flex-shrink: 0; background: white; border: 1px solid #ccc;
+      display: flex; flex-direction: column; align-items: stretch;
+      padding: 8px; gap: 6px; overflow-y: auto;
+    }
+    .sidebar-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+    #selected-row { display: flex; justify-content: center; padding-bottom: 6px; border-bottom: 1px solid #ddd; margin-bottom: 2px; }
+    #selected-box { width: 72px; height: 72px; border: 3px solid #4285f4; border-radius: 6px; overflow: hidden; flex-shrink: 0; position: relative; background: #eee; }
+    #tile-cols { display: flex; flex-direction: row; gap: 4px; align-items: flex-start; }
+    .tile-col { display: flex; flex-direction: column; gap: 4px; }
+    .sidebar-item { width: 60px; height: 60px; border: 2px solid transparent; border-radius: 4px; cursor: pointer; overflow: hidden; flex-shrink: 0; position: relative; background: #eee; }
+    .sidebar-item:hover { border-color: #aaa; }
+    .sidebar-item.active { border-color: #4285f4; }
+
+    /* Upgrade tool special styling */
+    .sidebar-item.upgrade-tool { background: #e8f4fd; }
+    .sidebar-item.upgrade-tool.active { border-color: #29b6f6; background: #b3e5fc; }
+    .sidebar-item.upgrade-tool img { width: 100%; height: 100%; object-fit: contain; }
+
+    .si-bg, .si-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+    .si-bg { z-index: 1; }
+    .si-overlay { z-index: 2; }
+
+    #bottom-bar { background: white; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; width: 100%; }
+    #calc-btn { padding: 0 32px; height: 44px; background: #4285f4; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer; letter-spacing: 0.02em; }
+    #calc-btn:hover { background: #3071e8; }
+    #calc-btn:active { transform: scale(0.98); }
+
+    #clear-section { padding-top: 6px; border-top: 1px solid #ddd; margin-top: 2px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    #clear-btn {
+      width: 72px; height: 72px; border: 3px solid #e53935; border-radius: 6px;
+      background: #fff0f0; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s, transform 0.1s;
+    }
+    #clear-btn:hover { background: #ffcdd2; }
+    #clear-btn:active { transform: scale(0.95); }
+    #clear-btn svg { width: 48px; height: 48px; }
+
+    #debug-panel {
+      background: #1e1e1e; color: #d4d4d4; border: 1px solid #444;
+      border-radius: 6px; padding: 12px; font-family: 'Courier New', monospace; font-size: 12px;
+      width: 100%; overflow-x: auto;
+    }
+    .debug-title {
+      color: #569cd6; font-weight: bold; font-size: 13px; margin-bottom: 10px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .debug-title::before { content: '▶'; font-size: 10px; color: #4ec9b0; }
+    .debug-block { margin-bottom: 14px; }
+    .debug-block:last-child { margin-bottom: 0; }
+    .debug-label { color: #4ec9b0; font-size: 11px; margin-bottom: 4px; font-weight: bold; }
+    .debug-grid-row { display: flex; gap: 4px; margin: 2px 0; }
+    .debug-grid-cell {
+      padding: 2px 6px; border-radius: 3px; font-size: 11px; min-width: 72px; text-align: center;
+      background: #2d2d2d; color: #9cdcfe; border: 1px solid #3c3c3c;
+    }
+    .debug-grid-cell.city-small { background: #1a3a5c; color: #79c0ff; border-color: #4285f4; }
+    .debug-grid-cell.city-big   { background: #3a1a5c; color: #d2a8ff; border-color: #9b59b6; }
+    .debug-inline { color: #ce9178; }
+    .debug-num    { color: #b5cea8; }
+    .debug-key    { color: #9cdcfe; }
+  </style>
 </head>
 <body>
-    <h1>WASM Vector Sum</h1>
-    <div id="inputs">
-        <input type="number" class="number-box" placeholder="Enter a number">
+<div id="outer">
+  <div id="top-row">
+    <div id="root">
+      <div class="corner" style="grid-row:1;grid-column:1;"></div>
+      <div class="h-bar top">
+        <button class="btn" id="top-plus">+</button>
+      </div>
+      <div class="corner" style="grid-row:1;grid-column:3;"></div>
+      <div class="v-bar left">
+        <button class="btn" id="left-plus">+</button>
+      </div>
+      <div id="grid-wrapper"><div id="grid-container"></div><svg id="border-svg"></svg></div>
+      <div class="v-bar right">
+        <button class="btn" id="right-plus">+</button>
+      </div>
+      <div class="corner" style="grid-row:3;grid-column:1;"></div>
+      <div class="h-bar bot">
+        <button class="btn" id="bot-plus">+</button>
+      </div>
+      <div class="corner" style="grid-row:3;grid-column:3;"></div>
     </div>
-    <button id="addBox">Add Box</button>
-    <button id="calculate">Calculate Sum</button>
-    <p>Result: <span id="result">0</span></p>
 
-    <script type="module">
-        import createModule from './marketcalc.js';
+    <div id="sidebar">
+      <div class="sidebar-label" style="text-align:center;">Selected</div>
+      <div id="selected-row"><div id="selected-box"></div></div>
+      <div class="sidebar-label">Tiles</div>
+      <div id="tile-cols"></div>
+      <div id="clear-section">
+        <div class="sidebar-label">Clear</div>
+        <button id="clear-btn" title="Clear all tiles">
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="20" stroke="#e53935" stroke-width="4"/>
+            <line x1="10" y1="38" x2="38" y2="10" stroke="#e53935" stroke-width="4" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
 
-        createModule().then((Module) => {
-            const addBoxButton = document.getElementById("addBox");
-            const calculateButton = document.getElementById("calculate");
-            const inputsDiv = document.getElementById("inputs");
-            const resultSpan = document.getElementById("result");
+  <div id="bottom-bar"><button id="calc-btn">Calculate</button></div>
 
-            // Add a new input box
-            addBoxButton.addEventListener("click", () => {
-                const input = document.createElement("input");
-                input.type = "number";
-                input.className = "number-box";
-                input.placeholder = "Enter a number";
-                inputsDiv.appendChild(input);
-            });
+  <div id="debug-panel">
+    <div class="debug-title">Debug</div>
+    <div class="debug-block">
+      <div class="debug-label">cityCenters</div>
+      <div id="dbg-city-centers"></div>
+    </div>
+    <div class="debug-block">
+      <div class="debug-label">actionOrder</div>
+      <div id="dbg-action-order"></div>
+    </div>
+    <div class="debug-block">
+      <div class="debug-label">tilesOwnedByCity</div>
+      <div id="dbg-tiles-owned"></div>
+    </div>
+    <div class="debug-block">
+      <div class="debug-label">grid</div>
+      <div id="dbg-grid"></div>
+    </div>
+  </div>
+</div>
 
-            // Calculate the sum
-            calculateButton.addEventListener("click", () => {
-                const inputs = document.querySelectorAll(".number-box");
-                const numbers = Array.from(inputs).map(input => parseInt(input.value) || 0);
+<script type="module">
 
-                // Allocate memory for the vector
-                const size = numbers.length;
-                const dataPtr = Module._malloc(size * 4); // 4 bytes per int
-                const dataHeap = new Int32Array(Module.HEAP32.buffer, dataPtr, size);
+import createModule from './marketcalc.js';
 
-                // Copy numbers into WASM memory
-                dataHeap.set(numbers);
+let wasmModule;
 
-                // Call the WASM function
-                const sum = Module._sum_wasm(dataPtr, size);
+// Initialize the WebAssembly module
+createModule().then((module) => {
+  wasmModule = module;
+  console.log('WASM Module initialized:', wasmModule);
+}).catch((error) => {
+  console.error('Failed to initialize WASM Module:', error);
+});
 
-                // Free the allocated memory
-                Module._free(dataPtr);
+const newPlacements = [];
 
-                // Display the result
-                resultSpan.textContent = sum;
-            });
-        });
-    </script>
+const tileBg = {
+  // first 7 correspond to cpp tile types
+  0: "img/field.png",
+  1:  "img/field.png",
+  2:  "img/field.png",
+  3:  "img/field.png",
+  4:  "img/field.png",
+  5:  "img/field.png",
+  6:  "img/field.png",
+  // next three are variations that are only used in frontend
+  7:  "img/water.png", // alternate obstacle (water)
+  8:  "img/field.png", // small city
+  9:  "img/field.png", // big city
+  
+};
+const tileOverlay = {
+  0: "img/field.png",
+  1:  "img/village.png",
+  2:  "img/mountain.png",
+  3:  "img/crop.png",
+  4:  "img/windmill.png",
+  5:  "img/market.png",
+  6:  "img/farm.png",
+  7:  null,
+  8:  "img/small_city.png",
+  9:  "img/big_city.png",
+};
+const tileNames = {
+  0:  "field",
+  1:  "village",
+  2:  "mountain",
+  3:  "crop",
+  4:  "windmill",
+  5:  "market",
+  6:  "farm",
+  7:  "water",
+  8:  "small_city",
+  9:  "big_city",
+};
+
+// Upgrade chain: village(1) -> small_city(8) -> big_city(9) -> max
+const upgradeChain = { 1: 8, 8: 9 };
+
+// Sidebar columns: 'upgrade' is the special tool token
+const sidebarCols = [[0, 7, 2], [3, 6, 4], [1, 'upgrade', 5]];
+
+// cityCenters[idx] = {r, c} coordinate of the idx-th city created
+// actionOrder = list of city indices in order of upgrade actions
+// tilesOwnedByCity[idx] = list of {r, c} pairs owned by that city
+let cityCenters = [];
+let actionOrder = [];
+let tilesOwnedByCity = {};
+
+let selectedVal = 9;
+let cellSize = 100;
+
+function newRow(len) { return Array.from({ length: len }, () => 0); }
+let grid = [newRow(3), newRow(3), newRow(3)];
+
+function isUpgradeTool() { return selectedVal === 'upgrade'; }
+
+function tileInnerHTML(val) {
+  if (val === 'upgrade') {
+    return `<img src="img/upgrade.png" alt="upgrade" style="width:100%;height:100%;object-fit:contain;">`;
+  }
+  const bg  = tileBg[val]      ? `<img class="si-bg"      src="${tileBg[val]}"      alt="">` : '';
+  const ov  = tileOverlay[val] ? `<img class="si-overlay" src="${tileOverlay[val]}" alt="">` : '';
+  return bg + ov;
+}
+
+function buildSidebar() {
+  const tileCols = document.getElementById('tile-cols');
+  tileCols.innerHTML = '';
+  sidebarCols.forEach(col => {
+    const colEl = document.createElement('div');
+    colEl.className = 'tile-col';
+    col.forEach(val => {
+      const item = document.createElement('div');
+      const isUpgrade = val === 'upgrade';
+      item.className = 'sidebar-item' + (isUpgrade ? ' upgrade-tool' : '') + (val === selectedVal ? ' active' : '');
+      item.dataset.val = val;
+      item.innerHTML = tileInnerHTML(val);
+      item.title = isUpgrade ? 'Upgrade: village → small city → big city' : (tileNames[val] || '');
+      item.addEventListener('click', () => selectTile(val));
+      colEl.appendChild(item);
+    });
+    tileCols.appendChild(colEl);
+  });
+  updateSelectedBox();
+}
+
+function selectTile(val) {
+  selectedVal = val;
+  document.querySelectorAll('.sidebar-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.val == selectedVal);
+  });
+  updateSelectedBox();
+}
+
+function updateSelectedBox() {
+  document.getElementById('selected-box').innerHTML = tileInnerHTML(selectedVal);
+}
+
+const cityTiles = new Set([8, 9]); // small_city, big_city
+
+// Find idx for an existing city at (r,c), or -1 if not found
+function cityIdxAt(r, c) {
+  return cityCenters.findIndex(cc => cc.r === r && cc.c === c);
+}
+
+// Returns a Set of "r,c" strings for all tiles currently owned by any city
+function allOwnedSet() {
+  const s = new Set();
+  Object.values(tilesOwnedByCity).forEach(tiles => tiles.forEach(t => s.add(`${t.r},${t.c}`)));
+  return s;
+}
+
+// Claim tiles in a square of half-size `half` around (cr,cc) for city `idx`,
+// skipping tiles already owned by any city. No bounds clamping — cities may own off-grid tiles.
+function claimTiles(idx, cr, cc, half) {
+  const owned = allOwnedSet();
+  if (!tilesOwnedByCity[idx]) tilesOwnedByCity[idx] = [];
+  for (let dr = -half; dr <= half; dr++) {
+    for (let dc = -half; dc <= half; dc++) {
+      const r = cr + dr, c = cc + dc;
+      if (owned.has(`${r},${c}`)) continue;
+      tilesOwnedByCity[idx].push({ r, c });
+      owned.add(`${r},${c}`);
+    }
+  }
+}
+
+// Flash a cell red to signal a disallowed action
+function disallowedAction(r, c) {
+  const cols = grid[0].length;
+  const idx = r * cols + c;
+  const cell = document.getElementById('grid-container').children[idx];
+  if (!cell) return;
+  cell.classList.add('flashing');
+  setTimeout(() => cell.classList.remove('flashing'), 350);
+}
+
+// Returns true if placing a village at (r,c) is too close to any existing village or city
+function villageConflict(r, c) {
+  const rows = grid.length, cols = grid[0].length;
+  for (let dr = -2; dr <= 2; dr++) {
+    for (let dc = -2; dc <= 2; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+      const v = grid[nr][nc];
+      if (v === 1 || v === 8 || v === 9) return true; // village, small_city, big_city
+    }
+  }
+  return false;
+}
+
+// Returns true if the city owning (r,c) already has a tile of tileVal
+function cityAlreadyHas(r, c, tileVal) {
+  // Find which city owns this tile
+  const ownerIdx = Object.entries(tilesOwnedByCity).find(([, tiles]) =>
+    tiles.some(t => t.r === r && t.c === c)
+  )?.[0];
+  if (ownerIdx === undefined) return false;
+  const owned = tilesOwnedByCity[ownerIdx];
+  return owned.some(t => {
+    const gr = grid[t.r], gv = gr && gr[t.c];
+    return gv === tileVal;
+  });
+}
+
+function handleCellClick(r, c) {
+  if (isUpgradeTool()) {
+    const cur = grid[r][c];
+    const next = upgradeChain[cur];
+    if (next === undefined) {
+      // big_city or non-village/city: disallowed
+      disallowedAction(r, c);
+      return;
+    }
+
+    grid[r][c] = next;
+
+    if (cur === 1) {
+      // village -> small_city: register new city, claim 3x3 (half=1)
+      const idx = cityCenters.length;
+      cityCenters.push({ r, c });
+      actionOrder.push(idx);
+      claimTiles(idx, r, c, 1);
+    } else if (cur === 8) {
+      // small_city -> big_city: claim the 16 extra tiles in 5x5 (half=2), skip already owned
+      const idx = cityIdxAt(r, c);
+      if (idx !== -1) {
+        actionOrder.push(idx);
+        claimTiles(idx, r, c, 2);
+      }
+    }
+
+    renderDebug();
+    render();
+  } else {
+    // Prevent overwriting small_city or big_city
+    if (cityTiles.has(grid[r][c])) {
+      disallowedAction(r, c);
+      return;
+    }
+
+    // Village placement: must not be within 5x5 of any other village or city
+    if (selectedVal === 1 && villageConflict(r, c)) {
+      disallowedAction(r, c);
+      return;
+    }
+
+    // Market (5): city may only have 1
+    if (selectedVal === 5 && cityAlreadyHas(r, c, 5)) {
+      disallowedAction(r, c);
+      return;
+    }
+
+    // Windmill (4): city may only have 1
+    if (selectedVal === 4 && cityAlreadyHas(r, c, 4)) {
+      disallowedAction(r, c);
+      return;
+    }
+
+    grid[r][c] = selectedVal;
+    renderDebug();
+    render();
+  }
+}
+
+function canUpgrade(val) {
+  return upgradeChain[val] !== undefined;
+}
+
+function render() {
+  const container = document.getElementById('grid-container');
+  const wrapper   = document.getElementById('grid-wrapper');
+  const rows = grid.length;
+  const cols = grid[0].length;
+  const maxW = wrapper.clientWidth  - 16;
+  const maxH = Math.max(wrapper.clientHeight - 16, 100);
+  cellSize = Math.min(Math.floor(maxW / cols), Math.floor(maxH / rows), 140);
+
+  container.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+  container.style.gridTemplateRows    = `repeat(${rows}, ${cellSize}px)`;
+  container.innerHTML = '';
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const val  = grid[r][c];
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.style.width  = cellSize + 'px';
+      cell.style.height = cellSize + 'px';
+
+      // Show no-upgrade cursor when: upgrade tool + can't upgrade, OR paint tool + city tile
+      if ((isUpgradeTool() && !canUpgrade(val)) || (!isUpgradeTool() && cityTiles.has(val))) {
+        cell.classList.add('no-upgrade');
+      }
+
+      if (tileBg[val]) {
+        const bg = document.createElement('img');
+        bg.className = 'cell-bg';
+        bg.src = tileBg[val];
+        cell.appendChild(bg);
+      }
+      if (tileOverlay[val]) {
+        const ov = document.createElement('img');
+        ov.className = 'cell-overlay';
+        ov.src = tileOverlay[val];
+        cell.appendChild(ov);
+      }
+      cell.addEventListener('click', () => handleCellClick(r, c));
+      container.appendChild(cell);
+    }
+  }
+
+  document.getElementById('bottom-bar').style.height = (cellSize + 24) + 'px';
+  renderBorders();
+}
+
+// Distinct colors per city for border strokes
+const CITY_COLORS = ['#000000', '#1a237e', '#b71c1c', '#1b5e20', '#e65100', '#4a148c', '#006064', '#3e2723'];
+
+function renderBorders() {
+  const svg = document.getElementById('border-svg');
+  const container = document.getElementById('grid-container');
+  const wrapper = document.getElementById('grid-wrapper');
+  const rows = grid.length, cols = grid[0].length;
+  const W = cols * cellSize, H = rows * cellSize;
+
+  // Position SVG to exactly overlap the grid-container
+  const cRect = container.getBoundingClientRect();
+  const wRect = wrapper.getBoundingClientRect();
+  svg.style.left = (cRect.left - wRect.left) + 'px';
+  svg.style.top  = (cRect.top  - wRect.top)  + 'px';
+
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = '';
+
+  const stroke = Math.max(3, Math.round(cellSize * 0.1));
+
+  Object.entries(tilesOwnedByCity).forEach(([idxStr, tiles]) => {
+    const idx = parseInt(idxStr);
+    // Only consider tiles that are currently within grid bounds
+    const inBounds = tiles.filter(t => t.r >= 0 && t.r < rows && t.c >= 0 && t.c < cols);
+    if (inBounds.length === 0) return;
+    // owned set includes ALL tiles (including off-grid) so borders at the grid edge
+    // correctly show as boundary when the neighbor is off-grid but owned
+    const owned = new Set(tiles.map(t => `${t.r},${t.c}`));
+    const color = CITY_COLORS[idx % CITY_COLORS.length];
+
+    // For each owned tile, check each of its 4 edges.
+    // If the neighbor is NOT owned by this city, draw that edge as a border segment.
+    const segments = [];
+    inBounds.forEach(({ r, c }) => {
+      const x = c * cellSize, y = r * cellSize;
+      // top edge: neighbor is (r-1, c)
+      if (!owned.has(`${r - 1},${c}`)) segments.push([x, y, x + cellSize, y]);
+      // bottom edge: neighbor is (r+1, c)
+      if (!owned.has(`${r + 1},${c}`)) segments.push([x, y + cellSize, x + cellSize, y + cellSize]);
+      // left edge: neighbor is (r, c-1)
+      if (!owned.has(`${r},${c - 1}`)) segments.push([x, y, x, y + cellSize]);
+      // right edge: neighbor is (r, c+1)
+      if (!owned.has(`${r},${c + 1}`)) segments.push([x + cellSize, y, x + cellSize, y + cellSize]);
+    });
+
+    segments.forEach(([x1, y1, x2, y2]) => {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+      line.setAttribute('stroke', color);
+      line.setAttribute('stroke-width', stroke);
+      line.setAttribute('stroke-linecap', 'square');
+      svg.appendChild(line);
+    });
+  });
+}
+
+// Shift all cityCenters coords when grid expands in a direction that offsets existing rows/cols
+function shiftCityCenters(dr, dc) {
+  cityCenters = cityCenters.map(cc => ({ r: cc.r + dr, c: cc.c + dc }));
+  Object.keys(tilesOwnedByCity).forEach(idx => {
+    tilesOwnedByCity[idx] = tilesOwnedByCity[idx].map(t => ({ r: t.r + dr, c: t.c + dc }));
+  });
+}
+
+function renderNewPlacements() {
+  for (let i = 0; i < newPlacements.length; i++) {
+    for (let j = 0; j < newPlacements[i].length; j++) {
+      const val = newPlacements[i][j];
+      const idx = i * grid[0].length + j;
+      const cell = document.getElementById('grid-container').children[idx];
+      if (val !== 0) {
+        // Render a half transparent purple overlay on top
+        if (cell) {
+          console.log("Purple overlay at ", i, j);
+          const overlay = document.createElement('div');
+          overlay.className = 'new-placement-overlay';
+          overlay.style.position = 'absolute';
+          overlay.style.top = '0';
+          overlay.style.left = '0';
+          overlay.style.width = '100%';
+          overlay.style.height = '100%';
+          overlay.style.backgroundColor = 'rgba(128, 0, 128, 0.5)';
+          overlay.style.zIndex = '1000';
+          cell.appendChild(overlay);
+        }
+      }
+      else {
+        // Remove any existing purple overlay
+        if (cell) {
+          const existingOverlay = cell.querySelector('.new-placement-overlay');
+          if (existingOverlay) {
+            existingOverlay.remove();
+          }
+        }
+
+      }
+
+    }
+  }
+  // Clear newPlacements after rendering
+  newPlacements.length = 0;
+}
+
+document.getElementById('top-plus').onclick  = () => { grid.unshift(newRow(grid[0].length)); shiftCityCenters(1, 0); renderDebug(); render(); };
+document.getElementById('bot-plus').onclick  = () => { grid.push(newRow(grid[0].length));    renderDebug(); render(); };
+document.getElementById('left-plus').onclick = () => { grid.forEach(r => r.unshift(0));      shiftCityCenters(0, 1); renderDebug(); render(); };
+document.getElementById('right-plus').onclick= () => { grid.forEach(r => r.push(0));         renderDebug(); render(); };
+
+document.getElementById('calc-btn').onclick = () => {
+  // Wait for the WASM Module to initialize
+  if (!wasmModule) {
+    alert('WASM Module is still loading. Please wait a moment and try again.');
+    return;
+  }
+  else {
+    alert('Calculate button clicked! Implement your calculation logic here using the initialized WASM module.');
+    // Transform HTML state to wasm expected format
+    const rows = grid.length;
+    const cols = grid[0].length;
+    const flatGrid = grid.flat();
+    if (flatGrid.length !== rows * cols) {
+      console.error('Grid flattening error: expected length', rows * cols, 'but got', flatGrid.length);
+      return;
+    }
+    const mapDataPtr = wasmModule._malloc(rows * cols * 4); // Allocate memory in WASM for the grid data
+    const mapDataHeap = new Int32Array(wasmModule.HEAP32.buffer, mapDataPtr, rows * cols);
+
+    //Change client-side elements in flatGrid to match expected tile types
+    for (let i = 0; i < flatGrid.length; i++) {
+      if (flatGrid[i] === 7) { // water
+        flatGrid[i] = 2; // WASM expects water as obstcale 2
+      } else if (flatGrid[i] === 8) { // small city
+        flatGrid[i] = 1; // WASM expects small city as city 1
+      } else if (flatGrid[i] === 9) { // big city
+        flatGrid[i] = 1; // WASM expects big city as city 1
+      }
+    }
+    mapDataHeap.set(flatGrid); // Copy grid data into WASM memory
+    for (let i = 0; i < rows; i++) {
+      let rowValues = '';
+      for (let j = 0; j < cols; j++) {
+        const index = mapDataPtr / 4 + i * cols + j; // Calculate the index in HEAP32
+        rowValues += wasmModule.HEAP32[index] + ' '; // Access the value at the pointer
+      }
+      console.log(`Row ${i}:`, rowValues);
+    }
+    console.log('Grid data prepared for WASM:', { rows, cols, mapDataHeap });
+
+
+    const flatCityCenterData = cityCenters.flatMap(cc => [cc.r, cc.c]);
+    const numCities = cityCenters.length;
+    const CityCenterData = wasmModule._malloc(flatCityCenterData.length * 4); // Allocate memory for city center data
+    const CityCenterHeap = new Int32Array(wasmModule.HEAP32.buffer, CityCenterData, numCities * 2);
+    CityCenterHeap.set(flatCityCenterData); // Copy city center data into WASM memory
+
+    const flatActionOrderData = actionOrder;
+    const numActions = actionOrder.length;
+    const ActionOrderData = wasmModule._malloc(flatActionOrderData.length * 4); // Allocate memory for action order data
+    const ActionOrderHeap = new Int32Array(wasmModule.HEAP32.buffer, ActionOrderData, numActions);
+    ActionOrderHeap.set(flatActionOrderData); // Copy action order data into WASM memory
+
+    // Call the WASM function (replace 'yourWasmFunction' with the actual function name)
+    const result = wasmModule._findBestMarketLayout_wasm(mapDataPtr, rows, cols, CityCenterData, numCities, ActionOrderData, numActions);
+    console.log('WASM function result:', result);
+
+    // Result is an int pointer, we need to read the data it points to (assuming it's a grid of the same size)
+    const resultGrid = new Int32Array(wasmModule.HEAP32.buffer, result, rows * cols);
+    console.log('Result grid from WASM:');
+    for (let i = 0; i < rows; i++) {
+      let rowValues = '';
+      for (let j = 0; j < cols; j++) {
+        const index = result / 4 + i * cols + j; // Calculate the index in HEAP32
+        rowValues += wasmModule.HEAP32[index] + ' '; // Access the value at the pointer
+      }
+      console.log(`Row ${i}:`, rowValues);
+    }
+
+    // Go through the resultGrid data, pick out any differences from original grid,
+    // and update the HTML grid accordingly. Highlight the entire cell purple to show a change.
+    // (the highlight is temporary and will disappear on next render)
+    newPlacements.length = 0; // Clear previous placements
+    for (let r = 0; r < rows; r++) {
+      newPlacements.push([]);
+      for (let c = 0; c < cols; c++) {
+        // if new tile is building/market and old tile was not
+        // then flash the cell to indicate a new placement
+        const bm = [4, 5]; // windmill, market
+        console.log(`Comparing cell (${r},${c}): original=${grid[r][c]}, result=${resultGrid[r * cols + c]}`);
+        if (!bm.includes(grid[r][c]) && bm.includes(resultGrid[r * cols + c])) {
+          grid[r][c] = resultGrid[r * cols + c];
+          newPlacements[r].push(1);
+        }
+        else {
+          newPlacements[r].push(0);
+        }
+      }
+    }
+  }
+  renderDebug();
+  render();
+  renderNewPlacements();
+};
+
+document.getElementById('clear-btn').onclick = () => {
+  if (confirm('Reset to 3x3 grid?')) {
+    grid = [newRow(3), newRow(3), newRow(3)];
+    cityCenters = [];
+    actionOrder = [];
+    tilesOwnedByCity = {};
+    newPlacements.length = 0;
+    renderDebug();
+    render();
+    renderNewPlacements();
+  }
+};
+
+function renderDebug() {
+  // cityCenters
+  const ccEl = document.getElementById('dbg-city-centers');
+  if (cityCenters.length === 0) {
+    ccEl.innerHTML = `<span class="debug-inline">[]</span>`;
+  } else {
+    ccEl.innerHTML = cityCenters.map((cc, i) =>
+      `<span class="debug-key">[${i}]</span> <span class="debug-inline">{r: <span class="debug-num">${cc.r}</span>, c: <span class="debug-num">${cc.c}</span>}</span>`
+    ).join('<br>');
+  }
+
+  // actionOrder
+  const aoEl = document.getElementById('dbg-action-order');
+  if (actionOrder.length === 0) {
+    aoEl.innerHTML = `<span class="debug-inline">[]</span>`;
+  } else {
+    aoEl.innerHTML = `[<span class="debug-num">${actionOrder.join('</span>, <span class="debug-num">')}</span>]`;
+  }
+
+  // tilesOwnedByCity
+  const toEl = document.getElementById('dbg-tiles-owned');
+  const idxs = Object.keys(tilesOwnedByCity);
+  if (idxs.length === 0) {
+    toEl.innerHTML = `<span class="debug-inline">{}</span>`;
+  } else {
+    toEl.innerHTML = idxs.map(idx => {
+      const tiles = tilesOwnedByCity[idx];
+      const pairs = tiles.map(t => `<span class="debug-inline">[<span class="debug-num">${t.r}</span>,<span class="debug-num">${t.c}</span>]</span>`).join(' ');
+      return `<span class="debug-key">[${idx}]</span> (${tiles.length}): ${pairs}`;
+    }).join('<br>');
+  }
+
+  // grid
+  const gridEl = document.getElementById('dbg-grid');
+  gridEl.innerHTML = grid.map(row => {
+    const cells = row.map(v => {
+      let cls = 'debug-grid-cell';
+      if (v === 8)  cls += ' city-small';
+      if (v === 9) cls += ' city-big';
+      return `<span class="${cls}">${tileNames[v]}</span>`;
+    }).join('');
+    return `<div class="debug-grid-row">${cells}</div>`;
+  }).join('');
+
+}
+
+window.addEventListener('resize', render);
+buildSidebar();
+render();
+renderDebug();
+renderNewPlacements();
+</script>
 </body>
 </html>

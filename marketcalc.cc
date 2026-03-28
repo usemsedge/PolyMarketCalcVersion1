@@ -10,6 +10,9 @@
 #include <functional>
 #include <utility>
 #include <unordered_set>
+// only if needed for debug
+#include <iomanip>
+#include <cstdint>
 
 
 using std::vector;
@@ -18,6 +21,25 @@ using std::unordered_map;
 using std::unordered_set;
 
 
+void prettyPrint(const vector<vector<int>>& map) {
+  for (const auto& row : map) {
+    for (const auto& tile : row) {
+      char c;
+      switch (tile) {
+        case EMPTY: c = '.'; break;
+        case CITY: c = 'C'; break;
+        case OBSTACLE: c = 'X'; break;
+        case RESOURCE: c = 'R'; break;
+        case BUILDING: c = 'B'; break;
+        case MARKET: c = 'M'; break;
+        case USED_RESOURCE: c = 'R'; break;
+        default: c = '?';
+      }
+      std::cout << c << " ";
+    }
+    std::cout << std::endl;
+  }
+}
 
 /*
 Helper function
@@ -383,6 +405,86 @@ BacktrackResult findBestMarketLayout(vector<vector<int>>& map,
   };
 
   return backtrackPlacements(state, 0, true);
+}
+
+
+/*
+REAL WASM FUNC
+*/
+
+extern "C" {
+    /*
+    mapData, rows, cols: pointer to a 1d array of integers
+      structure: each tile is represented by an integer encoding type, rows x cols total length
+
+    cityCenterData, numCities: pointer to a 1d array of integers
+      structure: each city center is represented by 2 integers (row, col), numCities total length
+                so 2 * numCities total ints
+    actionOrderData, actionOrderSize: pointer to a 1d array of intgers
+      structure: each integer is a city ID, actionOrderSize total length
+
+    Returns:
+    pointer to 1d array of tiles (but with more markets and buildings), rows x cols total length
+    */
+    int32_t* findBestMarketLayout_wasm(int32_t* mapData, int32_t rows, int32_t cols, 
+                                    int32_t* cityCenterData, int32_t numCities,
+                                    int32_t* actionOrderData, int32_t actionOrderSize) {
+        std::cout << "Received map of size " << rows << "x" << cols << std::endl;
+        vector<vector<int>> map(rows, vector<int32_t>(cols));
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                map[i][j] = mapData[i * cols + j];
+            }
+        }
+        std::cout << "Map data loaded." << std::endl;
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                std::cout << map[i][j] << " ";
+            }
+            std::cout << std::endl;
+        }
+
+        vector<Coord> cityCenters(numCities);
+        for (int i = 0; i < numCities; i++) {
+            cityCenters[i] = Coord{cityCenterData[2 * i], cityCenterData[2 * i + 1]};
+        }
+
+        std::cout << "City Centers:" << std::endl;
+        for (const auto& center : cityCenters) {
+            std::cout << "(" << center.row << ", " << center.col << ")" << std::endl;
+        }
+
+        vector<int> actionOrder(actionOrderSize);
+        for (int i = 0; i < actionOrderSize; i++) {
+            actionOrder[i] = actionOrderData[i];
+        }
+
+        std::cout << "Action Order: ";
+        for (const auto& action : actionOrder) {
+            std::cout << action << " ";
+        }
+        std::cout << std::endl;
+
+        std::cout << "Input Map:" << std::endl;
+        for (const auto& row : map) {
+            for (const auto& tile : row) {
+                std::cout << tile << " ";
+            }
+            std::cout << std::endl;
+        }
+
+
+        BacktrackResult result = findBestMarketLayout(map, cityCenters, actionOrder);
+
+        // Allocate memory for the result layout and return it
+        int* resultLayout = new int[rows * cols];
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                resultLayout[i * cols + j] = result.bestLayout[i][j].type;
+            }
+        }
+        return resultLayout;
+    }
 }
 
 /*
