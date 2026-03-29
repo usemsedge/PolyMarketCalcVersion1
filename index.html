@@ -78,19 +78,38 @@
     .si-bg { z-index: 1; }
     .si-overlay { z-index: 2; }
 
-    #bottom-bar { background: white; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; width: 100%; }
+    #bottom-bar { background: white; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; width: 100%; padding: 8px 12px; }
     #calc-btn { padding: 0 32px; height: 44px; background: #4285f4; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer; letter-spacing: 0.02em; }
     #calc-btn:hover { background: #3071e8; }
     #calc-btn:active { transform: scale(0.98); }
 
-    #clear-section { padding-top: 6px; border-top: 1px solid #ddd; margin-top: 2px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    #clear-btn {
-      width: 72px; height: 72px; border: 3px solid #e53935; border-radius: 6px;
-      background: #fff0f0; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    #undo-clear-section {
+      padding-top: 6px; border-top: 1px solid #ddd; margin-top: 2px;
+      display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%;
+    }
+    .undo-clear-row {
+      display: flex; flex-direction: row; align-items: flex-end; justify-content: center; gap: 12px;
+    }
+    .undo-clear-col {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+    }
+    .sidebar-square-btn {
+      width: 72px; height: 72px; border-radius: 6px; border-width: 3px; border-style: solid;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
       transition: background 0.15s, transform 0.1s;
+      box-sizing: border-box; padding: 0; flex-shrink: 0;
+    }
+    .sidebar-square-btn:active { transform: scale(0.95); }
+    .sidebar-square-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    #undo-btn {
+      border-color: #4285f4; background: #e8f4fd;
+      font-size: 13px; font-weight: 600; color: #1a237e; letter-spacing: 0.02em;
+    }
+    #undo-btn:not(:disabled):hover { background: #d2e7fc; }
+    #clear-btn {
+      border-color: #e53935; background: #fff0f0;
     }
     #clear-btn:hover { background: #ffcdd2; }
-    #clear-btn:active { transform: scale(0.95); }
     #clear-btn svg { width: 48px; height: 48px; }
 
     #debug-panel {
@@ -146,19 +165,29 @@
       <div id="selected-row"><div id="selected-box"></div></div>
       <div class="sidebar-label">Tiles</div>
       <div id="tile-cols"></div>
-      <div id="clear-section">
-        <div class="sidebar-label">Clear</div>
-        <button id="clear-btn" title="Clear all tiles">
-          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="24" cy="24" r="20" stroke="#e53935" stroke-width="4"/>
-            <line x1="10" y1="38" x2="38" y2="10" stroke="#e53935" stroke-width="4" stroke-linecap="round"/>
-          </svg>
-        </button>
+      <div id="undo-clear-section">
+        <div class="undo-clear-row">
+          <div class="undo-clear-col">
+            <div class="sidebar-label">History</div>
+            <button type="button" id="undo-btn" class="sidebar-square-btn" disabled title="Undo last change (painting, grid size, Calculate, …). No redo.">Undo</button>
+          </div>
+          <div class="undo-clear-col">
+            <div class="sidebar-label">Clear</div>
+            <button type="button" id="clear-btn" class="sidebar-square-btn" title="Clear all tiles">
+              <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="24" cy="24" r="20" stroke="#e53935" stroke-width="4"/>
+                <line x1="10" y1="38" x2="38" y2="10" stroke="#e53935" stroke-width="4" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <div id="bottom-bar"><button id="calc-btn">Calculate</button></div>
+  <div id="bottom-bar">
+    <button type="button" id="calc-btn">Calculate</button>
+  </div>
 
   <div id="debug-panel">
     <div class="debug-title">Debug</div>
@@ -194,8 +223,6 @@ createModule().then((module) => {
 }).catch((error) => {
   console.error('Failed to initialize WASM Module:', error);
 });
-
-const newPlacements = [];
 
 const tileBg = {
   // first 7 correspond to cpp tile types
@@ -250,11 +277,64 @@ let cityCenters = [];
 let actionOrder = [];
 let tilesOwnedByCity = {};
 
-let selectedVal = 9;
+let selectedVal = 1; // village
 let cellSize = 100;
 
 function newRow(len) { return Array.from({ length: len }, () => 0); }
 let grid = [newRow(3), newRow(3), newRow(3)];
+
+/**
+ * LIFO stack of immutable editor snapshots (no redo: restore drops the snapshot permanently).
+ * One snapshot is pushed immediately before each user-committed mutation.
+ */
+let undoStack = [];
+
+function cloneTilesOwnedByCity(src) {
+  const out = {};
+  for (const k of Object.keys(src)) {
+    out[k] = src[k].map(t => ({ r: t.r, c: t.c }));
+  }
+  return out;
+}
+
+function snapshotEditorState() {
+  return {
+    grid: grid.map(row => row.slice()),
+    cityCenters: cityCenters.map(cc => ({ r: cc.r, c: cc.c })),
+    actionOrder: actionOrder.slice(),
+    tilesOwnedByCity: cloneTilesOwnedByCity(tilesOwnedByCity),
+  };
+}
+
+function restoreEditorState(s) {
+  grid = s.grid.map(row => row.slice());
+  cityCenters = s.cityCenters.map(cc => ({ r: cc.r, c: cc.c }));
+  actionOrder = s.actionOrder.slice();
+  tilesOwnedByCity = cloneTilesOwnedByCity(s.tilesOwnedByCity);
+}
+
+function pushUndoSnapshot() {
+  undoStack.push(snapshotEditorState());
+  updateUndoButton();
+}
+
+function updateUndoButton() {
+  const btn = document.getElementById('undo-btn');
+  if (btn) btn.disabled = undoStack.length === 0;
+}
+
+function resetUndoHistory() {
+  undoStack.length = 0;
+  updateUndoButton();
+}
+
+function undoOnce() {
+  if (undoStack.length === 0) return;
+  restoreEditorState(undoStack.pop());
+  updateUndoButton();
+  renderDebug();
+  render();
+}
 
 function isUpgradeTool() { return selectedVal === 'upgrade'; }
 
@@ -378,6 +458,7 @@ function handleCellClick(r, c) {
       return;
     }
 
+    pushUndoSnapshot();
     grid[r][c] = next;
 
     if (cur === 1) {
@@ -422,6 +503,7 @@ function handleCellClick(r, c) {
       return;
     }
 
+    pushUndoSnapshot();
     grid[r][c] = selectedVal;
     renderDebug();
     render();
@@ -475,7 +557,9 @@ function render() {
     }
   }
 
-  document.getElementById('bottom-bar').style.height = (cellSize + 24) + 'px';
+  const bb = document.getElementById('bottom-bar');
+  bb.style.minHeight = (cellSize + 24) + 'px';
+  bb.style.height = (cellSize + 24) + 'px';
   renderBorders();
 }
 
@@ -547,155 +631,174 @@ function shiftCityCenters(dr, dc) {
   });
 }
 
-function renderNewPlacements() {
-  for (let i = 0; i < newPlacements.length; i++) {
-    for (let j = 0; j < newPlacements[i].length; j++) {
-      const val = newPlacements[i][j];
-      const idx = i * grid[0].length + j;
-      const cell = document.getElementById('grid-container').children[idx];
-      if (val !== 0) {
-        // Render a half transparent purple overlay on top
-        if (cell) {
-          console.log("Purple overlay at ", i, j);
-          const overlay = document.createElement('div');
-          overlay.className = 'new-placement-overlay';
-          overlay.style.position = 'absolute';
-          overlay.style.top = '0';
-          overlay.style.left = '0';
-          overlay.style.width = '100%';
-          overlay.style.height = '100%';
-          overlay.style.backgroundColor = 'rgba(128, 0, 128, 0.5)';
-          overlay.style.zIndex = '1000';
-          cell.appendChild(overlay);
-        }
+/**
+ * WASM is assumed never to move or remove an existing windmill (4) or market (5).
+ * Reject results that violate that before applying anything to the grid.
+ */
+function validateWasmPinnedBuildingsMarkets(resultFlat, rows, cols) {
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const g = grid[r][c];
+      if (g !== 4 && g !== 5) continue;
+      const rt = resultFlat[r * cols + c];
+      if (rt !== g) {
+        return { r, c, expected: g, got: rt };
       }
-      else {
-        // Remove any existing purple overlay
-        if (cell) {
-          const existingOverlay = cell.querySelector('.new-placement-overlay');
-          if (existingOverlay) {
-            existingOverlay.remove();
-          }
-        }
-
-      }
-
     }
   }
-  // Clear newPlacements after rendering
-  newPlacements.length = 0;
+  return null;
 }
 
-document.getElementById('top-plus').onclick  = () => { grid.unshift(newRow(grid[0].length)); shiftCityCenters(1, 0); renderDebug(); render(); };
-document.getElementById('bot-plus').onclick  = () => { grid.push(newRow(grid[0].length));    renderDebug(); render(); };
-document.getElementById('left-plus').onclick = () => { grid.forEach(r => r.unshift(0));      shiftCityCenters(0, 1); renderDebug(); render(); };
-document.getElementById('right-plus').onclick= () => { grid.forEach(r => r.push(0));         renderDebug(); render(); };
+function tileTypeName(v) {
+  return tileNames[v] != null ? tileNames[v] : String(v);
+}
+
+/**
+ * Cells where WASM suggests a windmill or market and the UI grid does not already match.
+ */
+function buildWasmPlacementDiff(resultFlat, rows, cols) {
+  const diff = Array.from({ length: rows }, () => Array(cols).fill(null));
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const rt = resultFlat[r * cols + c];
+      if ((rt === 4 || rt === 5) && grid[r][c] !== rt) {
+        diff[r][c] = rt;
+      }
+    }
+  }
+  return diff;
+}
+
+function wasmDiffHasAnyPlacement(diff) {
+  for (let r = 0; r < diff.length; r++) {
+    for (let c = 0; c < diff[r].length; c++) {
+      if (diff[r][c] === 4 || diff[r][c] === 5) return true;
+    }
+  }
+  return false;
+}
+
+function applyWasmPlacementDiffToGrid(diff, rows, cols) {
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const t = diff[r][c];
+      if (t === 4 || t === 5) grid[r][c] = t;
+    }
+  }
+}
+
+document.getElementById('top-plus').onclick  = () => { pushUndoSnapshot(); grid.unshift(newRow(grid[0].length)); shiftCityCenters(1, 0); renderDebug(); render(); };
+document.getElementById('bot-plus').onclick  = () => { pushUndoSnapshot(); grid.push(newRow(grid[0].length)); renderDebug(); render(); };
+document.getElementById('left-plus').onclick = () => { pushUndoSnapshot(); grid.forEach(r => r.unshift(0)); shiftCityCenters(0, 1); renderDebug(); render(); };
+document.getElementById('right-plus').onclick= () => { pushUndoSnapshot(); grid.forEach(r => r.push(0)); renderDebug(); render(); };
 
 document.getElementById('calc-btn').onclick = () => {
-  // Wait for the WASM Module to initialize
   if (!wasmModule) {
     alert('WASM Module is still loading. Please wait a moment and try again.');
     return;
   }
-  else {
-    alert('Calculate button clicked! Implement your calculation logic here using the initialized WASM module.');
-    // Transform HTML state to wasm expected format
-    const rows = grid.length;
-    const cols = grid[0].length;
-    const flatGrid = grid.flat();
-    if (flatGrid.length !== rows * cols) {
-      console.error('Grid flattening error: expected length', rows * cols, 'but got', flatGrid.length);
-      return;
-    }
-    const mapDataPtr = wasmModule._malloc(rows * cols * 4); // Allocate memory in WASM for the grid data
-    const mapDataHeap = new Int32Array(wasmModule.HEAP32.buffer, mapDataPtr, rows * cols);
 
-    //Change client-side elements in flatGrid to match expected tile types
-    for (let i = 0; i < flatGrid.length; i++) {
-      if (flatGrid[i] === 7) { // water
-        flatGrid[i] = 2; // WASM expects water as obstcale 2
-      } else if (flatGrid[i] === 8) { // small city
-        flatGrid[i] = 1; // WASM expects small city as city 1
-      } else if (flatGrid[i] === 9) { // big city
-        flatGrid[i] = 1; // WASM expects big city as city 1
-      }
-    }
-    mapDataHeap.set(flatGrid); // Copy grid data into WASM memory
-    for (let i = 0; i < rows; i++) {
-      let rowValues = '';
-      for (let j = 0; j < cols; j++) {
-        const index = mapDataPtr / 4 + i * cols + j; // Calculate the index in HEAP32
-        rowValues += wasmModule.HEAP32[index] + ' '; // Access the value at the pointer
-      }
-      console.log(`Row ${i}:`, rowValues);
-    }
-    console.log('Grid data prepared for WASM:', { rows, cols, mapDataHeap });
-
-
-    const flatCityCenterData = cityCenters.flatMap(cc => [cc.r, cc.c]);
-    const numCities = cityCenters.length;
-    const CityCenterData = wasmModule._malloc(flatCityCenterData.length * 4); // Allocate memory for city center data
-    const CityCenterHeap = new Int32Array(wasmModule.HEAP32.buffer, CityCenterData, numCities * 2);
-    CityCenterHeap.set(flatCityCenterData); // Copy city center data into WASM memory
-
-    const flatActionOrderData = actionOrder;
-    const numActions = actionOrder.length;
-    const ActionOrderData = wasmModule._malloc(flatActionOrderData.length * 4); // Allocate memory for action order data
-    const ActionOrderHeap = new Int32Array(wasmModule.HEAP32.buffer, ActionOrderData, numActions);
-    ActionOrderHeap.set(flatActionOrderData); // Copy action order data into WASM memory
-
-    // Call the WASM function (replace 'yourWasmFunction' with the actual function name)
-    const result = wasmModule._findBestMarketLayout_wasm(mapDataPtr, rows, cols, CityCenterData, numCities, ActionOrderData, numActions);
-    console.log('WASM function result:', result);
-
-    // Result is an int pointer, we need to read the data it points to (assuming it's a grid of the same size)
-    const resultGrid = new Int32Array(wasmModule.HEAP32.buffer, result, rows * cols);
-    console.log('Result grid from WASM:');
-    for (let i = 0; i < rows; i++) {
-      let rowValues = '';
-      for (let j = 0; j < cols; j++) {
-        const index = result / 4 + i * cols + j; // Calculate the index in HEAP32
-        rowValues += wasmModule.HEAP32[index] + ' '; // Access the value at the pointer
-      }
-      console.log(`Row ${i}:`, rowValues);
-    }
-
-    // Go through the resultGrid data, pick out any differences from original grid,
-    // and update the HTML grid accordingly. Highlight the entire cell purple to show a change.
-    // (the highlight is temporary and will disappear on next render)
-    newPlacements.length = 0; // Clear previous placements
-    for (let r = 0; r < rows; r++) {
-      newPlacements.push([]);
-      for (let c = 0; c < cols; c++) {
-        // if new tile is building/market and old tile was not
-        // then flash the cell to indicate a new placement
-        const bm = [4, 5]; // windmill, market
-        console.log(`Comparing cell (${r},${c}): original=${grid[r][c]}, result=${resultGrid[r * cols + c]}`);
-        if (!bm.includes(grid[r][c]) && bm.includes(resultGrid[r * cols + c])) {
-          grid[r][c] = resultGrid[r * cols + c];
-          newPlacements[r].push(1);
-        }
-        else {
-          newPlacements[r].push(0);
-        }
-      }
-    }
+  const rows = grid.length;
+  const cols = grid[0].length;
+  const flatGrid = grid.flat();
+  if (flatGrid.length !== rows * cols) {
+    console.error('Grid flattening error: expected length', rows * cols, 'but got', flatGrid.length);
+    return;
   }
+
+  const numCities = cityCenters.length;
+  if (numCities === 0) {
+    alert('Add at least one city (use the upgrade tool on a village) before calculating.');
+    return;
+  }
+  const numActions = actionOrder.length;
+  if (numActions === 0) {
+    alert('No capture / border-growth order yet. Upgrade a village to small city first.');
+    return;
+  }
+
+  for (let i = 0; i < flatGrid.length; i++) {
+    if (flatGrid[i] === 7) flatGrid[i] = 2;
+    else if (flatGrid[i] === 8) flatGrid[i] = 1;
+    else if (flatGrid[i] === 9) flatGrid[i] = 1;
+  }
+
+  const mapDataPtr = wasmModule._malloc(rows * cols * 4);
+  const mapDataHeap = new Int32Array(wasmModule.HEAP32.buffer, mapDataPtr, rows * cols);
+  mapDataHeap.set(flatGrid);
+
+  const flatCityCenterData = cityCenters.flatMap(cc => [cc.r, cc.c]);
+  const CityCenterData = wasmModule._malloc(flatCityCenterData.length * 4);
+  const CityCenterHeap = new Int32Array(wasmModule.HEAP32.buffer, CityCenterData, flatCityCenterData.length);
+  CityCenterHeap.set(flatCityCenterData);
+
+  const flatActionOrderData = actionOrder;
+  const ActionOrderData = wasmModule._malloc(flatActionOrderData.length * 4);
+  const ActionOrderHeap = new Int32Array(wasmModule.HEAP32.buffer, ActionOrderData, numActions);
+  ActionOrderHeap.set(flatActionOrderData);
+
+  let resultPtr = 0;
+  try {
+    resultPtr = wasmModule._findBestMarketLayout_wasm(mapDataPtr, rows, cols, CityCenterData, numCities, ActionOrderData, numActions);
+  } catch (e) {
+    console.error(e);
+    alert(`Calculation failed: ${e && e.message ? e.message : e}`);
+    wasmModule._free(mapDataPtr);
+    wasmModule._free(CityCenterData);
+    wasmModule._free(ActionOrderData);
+    return;
+  }
+  wasmModule._free(mapDataPtr);
+  wasmModule._free(CityCenterData);
+  wasmModule._free(ActionOrderData);
+
+  if (!resultPtr) {
+    alert('WASM did not return a layout (null pointer).');
+    return;
+  }
+
+  const resultFlat = new Int32Array(rows * cols);
+  resultFlat.set(new Int32Array(wasmModule.HEAP32.buffer, resultPtr, rows * cols));
+  wasmModule._free(resultPtr);
+
+  const pinViolation = validateWasmPinnedBuildingsMarkets(resultFlat, rows, cols);
+  if (pinViolation) {
+    const { r, c, expected, got } = pinViolation;
+    alert(
+      `Solver output changed an existing windmill or market at row ${r}, col ${c} ` +
+        `(expected ${tileTypeName(expected)}, got ${tileTypeName(got)}). ` +
+        `That is not supported here; existing buildings and markets must stay fixed.`
+    );
+    renderDebug();
+    render();
+    return;
+  }
+
+  const placementDiff = buildWasmPlacementDiff(resultFlat, rows, cols);
+  if (!wasmDiffHasAnyPlacement(placementDiff)) {
+    alert('No new windmill or market placements differ from your grid.');
+    renderDebug();
+    render();
+    return;
+  }
+
+  pushUndoSnapshot();
+  applyWasmPlacementDiffToGrid(placementDiff, rows, cols);
   renderDebug();
   render();
-  renderNewPlacements();
 };
+
+document.getElementById('undo-btn').onclick = () => undoOnce();
 
 document.getElementById('clear-btn').onclick = () => {
   if (confirm('Reset to 3x3 grid?')) {
+    resetUndoHistory();
     grid = [newRow(3), newRow(3), newRow(3)];
     cityCenters = [];
     actionOrder = [];
     tilesOwnedByCity = {};
-    newPlacements.length = 0;
     renderDebug();
     render();
-    renderNewPlacements();
   }
 };
 
@@ -747,9 +850,9 @@ function renderDebug() {
 
 window.addEventListener('resize', render);
 buildSidebar();
+updateUndoButton();
 render();
 renderDebug();
-renderNewPlacements();
 </script>
 </body>
 </html>

@@ -487,22 +487,3 @@ extern "C" {
     }
 }
 
-/*
-WASM TEST
-*/
-// Your real function using vectors
-int sum(std::vector<int> vec) {
-    int total = 0;
-    for (int val : vec) {
-        total += val;
-    }
-    return total;
-}
-
-// WASM-facing wrapper
-extern "C" {
-    int sum_wasm(int* data, int size) {
-        std::vector<int> vec(data, data + size);  // construct vector from pointer
-        return sum(vec);
-    }
-}

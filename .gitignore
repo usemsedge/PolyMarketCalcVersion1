@@ -1,2 +1,13 @@
 node_modules/
 emsdk/
+
+# Native test binary + macOS debug symbols
+marketcalc_tests
+*.dSYM/
+
+# Emscripten outputs (regenerate with `make wasm` or `make run`)
+marketcalc.js
+marketcalc.wasm
+
+# macOS
+.DS_Store
