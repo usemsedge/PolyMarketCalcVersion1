@@ -44,11 +44,70 @@
     .btn:active { transform: scale(0.95); }
 
     .cell { position: relative; border: 0.5px solid #bbb; overflow: hidden; cursor: pointer; flex-shrink: 0; background: transparent; }
-    .cell.flashing { background-color: #e53935 !important; }
-    .cell.flashing .cell-bg, .cell.flashing .cell-overlay { opacity: 0.35; }
-    .cell:hover { outline: 2px solid #4285f4; outline-offset: -2px; }
+    /* Front overlay (like flash) so highlight sits above tile art, not behind it */
+    .cell::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.12s ease, background 0.12s ease;
+      background: rgba(66, 133, 244, 0.32);
+    }
+    .cell:hover::after {
+      opacity: 1;
+    }
+    .cell:hover .cell-bg,
+    .cell:hover .cell-overlay {
+      opacity: 0.35;
+    }
     .cell.no-upgrade { cursor: not-allowed; }
-    .cell.no-upgrade:hover { outline: 2px solid #e53935; outline-offset: -2px; }
+    .cell.no-upgrade:hover::after {
+      background: rgba(229, 57, 53, 0.38);
+    }
+    .cell.flashing { background-color: transparent; }
+    .cell.flashing::after {
+      background: rgba(229, 57, 53, 0.45);
+      opacity: 1;
+      z-index: 20;
+    }
+    .cell.flashing .cell-bg, .cell.flashing .cell-overlay { opacity: 0.35; }
+    /* WASM: purple above tile art; 4 on/off blinks in 2s; grid stays under #border-svg */
+    @keyframes wasmPurpleBlinkOverlay {
+      0%, 12.49% { opacity: 1; }
+      12.5%, 24.99% { opacity: 0; }
+      25%, 37.49% { opacity: 1; }
+      37.5%, 49.99% { opacity: 0; }
+      50%, 62.49% { opacity: 1; }
+      62.5%, 74.99% { opacity: 0; }
+      75%, 87.49% { opacity: 1; }
+      87.5%, 100% { opacity: 0; }
+    }
+    @keyframes wasmPurpleBlinkTiles {
+      0%, 12.49% { opacity: 0.38; }
+      12.5%, 24.99% { opacity: 1; }
+      25%, 37.49% { opacity: 0.38; }
+      37.5%, 49.99% { opacity: 1; }
+      50%, 62.49% { opacity: 0.38; }
+      62.5%, 74.99% { opacity: 1; }
+      75%, 87.49% { opacity: 0.38; }
+      87.5%, 100% { opacity: 1; }
+    }
+    .cell.wasm-purple-flash::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 35;
+      background: rgba(106, 27, 154, 0.55);
+      opacity: 0;
+      animation: wasmPurpleBlinkOverlay 2s linear forwards;
+    }
+    .cell.wasm-purple-flash .cell-bg,
+    .cell.wasm-purple-flash .cell-overlay {
+      animation: wasmPurpleBlinkTiles 2s linear forwards;
+    }
     .cell .cell-bg, .cell .cell-overlay {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; display: block;
     }
@@ -215,6 +274,7 @@
 import createModule from './marketcalc.js';
 
 let wasmModule;
+let wasmPurpleFlashTimeoutId = null;
 
 // Initialize the WebAssembly module
 createModule().then((module) => {
@@ -515,6 +575,7 @@ function canUpgrade(val) {
 }
 
 function render() {
+  clearWasmPurpleFlash();
   const container = document.getElementById('grid-container');
   const wrapper   = document.getElementById('grid-wrapper');
   const rows = grid.length;
@@ -687,6 +748,42 @@ function applyWasmPlacementDiffToGrid(diff, rows, cols) {
   }
 }
 
+function clearWasmPurpleFlash() {
+  if (wasmPurpleFlashTimeoutId !== null) {
+    clearTimeout(wasmPurpleFlashTimeoutId);
+    wasmPurpleFlashTimeoutId = null;
+  }
+  const container = document.getElementById('grid-container');
+  if (container) {
+    container.querySelectorAll('.wasm-purple-flash').forEach((el) => el.classList.remove('wasm-purple-flash'));
+  }
+}
+
+/** After render: highlight cells that received a new windmill or market from the solver. */
+function scheduleWasmPlacementPurpleFlash(placementDiff, rows, cols) {
+  clearWasmPurpleFlash();
+  const indices = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const t = placementDiff[r][c];
+      if (t === 4 || t === 5) indices.push(r * cols + c);
+    }
+  }
+  if (indices.length === 0) return;
+  const container = document.getElementById('grid-container');
+  for (const idx of indices) {
+    const cell = container.children[idx];
+    if (cell) cell.classList.add('wasm-purple-flash');
+  }
+  wasmPurpleFlashTimeoutId = setTimeout(() => {
+    wasmPurpleFlashTimeoutId = null;
+    const c = document.getElementById('grid-container');
+    if (c) {
+      c.querySelectorAll('.wasm-purple-flash').forEach((el) => el.classList.remove('wasm-purple-flash'));
+    }
+  }, 2000);
+}
+
 document.getElementById('top-plus').onclick  = () => { pushUndoSnapshot(); grid.unshift(newRow(grid[0].length)); shiftCityCenters(1, 0); renderDebug(); render(); };
 document.getElementById('bot-plus').onclick  = () => { pushUndoSnapshot(); grid.push(newRow(grid[0].length)); renderDebug(); render(); };
 document.getElementById('left-plus').onclick = () => { pushUndoSnapshot(); grid.forEach(r => r.unshift(0)); shiftCityCenters(0, 1); renderDebug(); render(); };
@@ -786,6 +883,7 @@ document.getElementById('calc-btn').onclick = () => {
   applyWasmPlacementDiffToGrid(placementDiff, rows, cols);
   renderDebug();
   render();
+  scheduleWasmPlacementPurpleFlash(placementDiff, rows, cols);
 };
 
 document.getElementById('undo-btn').onclick = () => undoOnce();

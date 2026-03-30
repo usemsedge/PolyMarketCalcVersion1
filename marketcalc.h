@@ -25,6 +25,7 @@ constexpr int BUILDING = 4;
 constexpr int MARKET = 5;
 constexpr int USED_RESOURCE = 6;
 
+
 struct TileState {
   int owner; // city ID that owns this tile, or -1 if unowned
   int type; // tile type (EMPTY, CITY, OBSTACLE, RESOURCE, BUILDING, MARKET)
@@ -77,23 +78,23 @@ struct BacktrackState {
 
     // Requires: quick access to buildings/markets per city for at most 1 checks
     //           quick access to buildings/markets per tile for adjacency checks
-    // Map from city ID to building/market, key not present if not placed
-    // Set of all building/market coordinates for quick lookup
-    unordered_map<int, Coord> curBuildingsInCity;
-    unordered_set<Coord> curBuildingsSet; 
-    unordered_map<int, Coord> curMarketsInCity;
-    unordered_set<Coord> curMarketsSet;
+    // List of building/market coordinates for each city
+    // curBuildingsInCity[i] corresponds to city ID i
+    // Coord will be invalid (-1, -1) if not placed
+
+    vector<Coord>& curBuildingsInCity;
+    vector<Coord>& curMarketsInCity;
+
+
+    // Returns through this
+    vector<vector<TileState>>& bestLayoutReturn;
+
+    // 2 temporary data structures
+    // These may be cleared upon start of each call
+    vector<vector<TileState>>& bestLayoutCurrent;
+    vector<int>& buildingLevelsCurrent;
 };
 
-// Result structure
-struct BacktrackResult {
-    int bestMarketTotal;
-    vector<vector<TileState>> bestLayout;
-
-    bool operator<(const BacktrackResult& other) const {
-        return bestMarketTotal < other.bestMarketTotal;
-    }
-};
 
 
 // Direction offsets for 8-neighbor adjacency
@@ -223,9 +224,11 @@ state: current backtracking state
 cityIdx: which city we are currently trying to place a building/market for, corresponds to city ID
 placingBuilding: true if placing building, false if placing market
 
-Returns: backtrackResult with the best market total found and the corresponding layout
+Returns: best market total found
 */
-BacktrackResult backtrackPlacements(BacktrackState& state, int cityIdx, bool placingBuilding);
+int backtrackPlacements(BacktrackState& state, int cityIdx, bool placingBuilding);
+
+
 
 /*
 Given a state, calculate total market level.
@@ -233,6 +236,12 @@ Rules:
 - Building level is determined by adjacency to UNCOVERED resource tiles, up to MAX_BUILDING_LEVEL
 - Market level is determined by sum of adjaicent building levels (up to MAX_MARKET_LEVEL)
 - Total market level is the sum of all individual market levels.
+
+Args:
+state: current backtracking state
+buildingLevels: 
+
+Returns: total market level
 */
 int calculateMarketTotal(const BacktrackState& state);
 
@@ -256,9 +265,10 @@ vector<int> actionOrder: order in which each city is captured and border growths
       All city IDs in cityCenters must appear at least once in actionOrder, but at most twice.
 
 Return:
-BacktrackResult containing the best market total found and the corresponding layout
+BacktrackState
+Best result contained in state.bestLayoutReturn
 */
-BacktrackResult findBestMarketLayout(vector<vector<int>>& map, 
+BacktrackState findBestMarketLayout(vector<vector<int>>& map, 
                                     const vector<Coord>& cityCenters,
                                     const vector<int>& actionOrder);
 

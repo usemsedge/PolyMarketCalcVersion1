@@ -11,7 +11,7 @@ TEST(calculateMarketTotal, RealState) {
 
   EXPECT_EQ(expected, actual);
 }
-
+//
 TEST(calculateMarketTotal, 2CityBestPlacementInitially) {
   /*
   OFFFFO
@@ -29,6 +29,8 @@ TEST(calculateMarketTotal, 2CityBestPlacementInitially) {
     Coord{1, 1},
     Coord{1, 4},
   };
+
+  // Create tilesOwnedByCity map
   unordered_map<int, vector<Coord>> tilesOwnedByCity;
   tilesOwnedByCity[0] = {
     Coord{0, 0}, Coord{0, 1}, Coord{0, 2},
@@ -40,35 +42,26 @@ TEST(calculateMarketTotal, 2CityBestPlacementInitially) {
     Coord{1, 3}, Coord{1, 4}, Coord{1, 5},
     Coord{2, 3}, Coord{2, 4}, Coord{2, 5},
   };
-  unordered_map<int, Coord> curBuildingsInCity = {
-    {0, Coord{1, 2}},
-    {1, Coord{1, 3}},
-  };
-  unordered_set<Coord> curBuildingsSet = {
+
+  vector<Coord> curBuildingsInCity = {
     Coord{1, 2},
     Coord{1, 3},
   };
-  unordered_map<int, Coord> curMarketsInCity = {
-    {0, Coord{2, 2}},
-    {1, Coord{2, 3}},
-  };
-  unordered_set<Coord> curMarketsSet = {
+  vector<Coord> curMarketsInCity = {
     Coord{2, 2},
     Coord{2, 3},
   };
-  BacktrackState state = {
+
+  int expected = 16;
+  int actual = calculateMarketTotal(BacktrackState{
     map,
     cityCenters,
     tilesOwnedByCity,
 
     curBuildingsInCity,
-    curBuildingsSet,
     curMarketsInCity,
-    curMarketsSet,
-  };
-
-  int expected = 16;
-  int actual = calculateMarketTotal(state);
+    garbageMap, garbageMap, garbageInts
+  });
   EXPECT_EQ(expected, actual);
 }
 
@@ -101,31 +94,24 @@ TEST(calculateMarketTotal, 2CityGoodPlacementFromBacktracking) {
     Coord{1, 3}, Coord{1, 4}, Coord{1, 5},
     Coord{2, 3}, Coord{2, 4}, Coord{2, 5},
   };
-  unordered_map<int, Coord> curBuildingsInCity = {
-    {0, Coord{2, 1}},
-    {1, Coord{1, 3}},
-  };
-  unordered_set<Coord> curBuildingsSet = {
+
+  vector<Coord> curBuildingsInCity = {
     Coord{2, 1},
     Coord{1, 3},
   };
-  unordered_map<int, Coord> curMarketsInCity = {
-    {0, Coord{2, 2}},
-    {1, Coord{2, 3}},
-  };
-  unordered_set<Coord> curMarketsSet = {
+  vector<Coord> curMarketsInCity = {
     Coord{2, 2},
-    Coord{2, 4},
+    Coord{2, 3},
   };
+
   BacktrackState state = {
     map,
     cityCenters,
     tilesOwnedByCity,
 
     curBuildingsInCity,
-    curBuildingsSet,
     curMarketsInCity,
-    curMarketsSet,
+    garbageMap, garbageMap, garbageInts
   };
 
   int expected = 9;
@@ -160,18 +146,11 @@ TEST(calculateMarketTotal, CapMarketLevel) {
     Coord{1, 3}, Coord{1, 4}, Coord{1, 5},
     Coord{2, 3}, Coord{2, 4}, Coord{2, 5},
   };
-  unordered_map<int, Coord> curBuildingsInCity = {
-    {0, Coord{1, 1}},
-    {1, Coord{1, 3}},
-  };
-  unordered_set<Coord> curBuildingsSet = {
-    Coord{1, 2},
+  vector<Coord> curBuildingsInCity = {
+    Coord{1, 1},
     Coord{1, 3},
   };
-  unordered_map<int, Coord> curMarketsInCity = {
-    {0, Coord{0, 2}},
-  };
-  unordered_set<Coord> curMarketsSet = {
+  vector<Coord> curMarketsInCity = {
     Coord{0, 2},
   };
   BacktrackState state = {
@@ -180,9 +159,8 @@ TEST(calculateMarketTotal, CapMarketLevel) {
     tilesOwnedByCity,
 
     curBuildingsInCity,
-    curBuildingsSet,
     curMarketsInCity,
-    curMarketsSet,
+    garbageMap, garbageMap, garbageInts
   };
 
   int expected = std::min(10, MAX_MARKET_LEVEL);

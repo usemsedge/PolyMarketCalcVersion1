@@ -1,0 +1,13 @@
+# Cursor / VS Code: use the "clangd" extension. Matches Makefile CXXFLAGS.
+# Intel Homebrew: change googletest path to /usr/local/opt/googletest/include
+CompileFlags:
+  Add:
+    - -std=c++17
+    - -Wall
+    - -Wextra
+    - -I/opt/homebrew/opt/googletest/include
+    - -I.
+    - -Itests
+
+Diagnostics:
+  UnusedIncludes: Strict

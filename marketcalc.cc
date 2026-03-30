@@ -19,6 +19,7 @@ using std::vector;
 using std::pair;
 using std::unordered_map;
 using std::unordered_set;
+using std::find;
 
 
 void prettyPrint(const vector<vector<int>>& map) {
@@ -119,26 +120,27 @@ Defined in marketcalc.h
 bool canPlaceMarket(const BacktrackState& state, Coord coord) {
   int row = coord.row;
   int col = coord.col;
-  
+  int cityId = state.map[row][col].owner;
+
   // Can only place within city borders
-  if (state.map[row][col].owner == -1) {
+  if (cityId == -1) {
+    // std::cout << "Cannot place building at (" << row << ", " << col << ") because it is not within city borders." << std::endl;
     return false;
   }
 
   // Can only place on empty or resource tile
   if (state.map[row][col].type != EMPTY && state.map[row][col].type != RESOURCE) {
+    // std::cout << "Cannot place building at (" << row << ", " << col << ") because it is not an empty or resource tile." << std::endl;
     return false;
   }
 
   // Market exists in city already
-  if (state.curMarketsInCity.find(state.map[row][col].owner) != state.curMarketsInCity.end()) {
+  if (state.curMarketsInCity[cityId] != Coord{-1, -1}) {
     return false;
   }
 
-  // Already occupied by something we just placed
-  // SANITY CHECK, DONT NEED since we already checked the map
-  if (state.curBuildingsSet.find(coord) != state.curBuildingsSet.end() || 
-      state.curMarketsSet.find(coord) != state.curMarketsSet.end()) {
+  // Building exists on that exact tile already
+  if (state.curBuildingsInCity[cityId] == coord) {
     return false;
   }
 
@@ -147,8 +149,10 @@ bool canPlaceMarket(const BacktrackState& state, Coord coord) {
     int ny = row + dx[i];
     int nx = col + dy[i];
     Coord adjacentCoord = {ny, nx};
+    int adjacentOwner = state.map[ny][nx].owner;
     if (inBounds(state.map, adjacentCoord) &&
-       state.curBuildingsSet.find(adjacentCoord) != state.curBuildingsSet.end()) {
+        adjacentOwner != -1 &&
+        state.curBuildingsInCity[adjacentOwner] != Coord{-1, -1}) {
       return true;
     }
   }
@@ -162,9 +166,10 @@ Defined in marketcalc.h
 bool canPlaceBuilding(const BacktrackState& state, Coord coord) {
   int row = coord.row;
   int col = coord.col;
+  int cityId = state.map[row][col].owner;
 
   // Can only place within city borders
-  if (state.map[row][col].owner == -1) {
+  if (cityId == -1) {
     // std::cout << "Cannot place building at (" << row << ", " << col << ") because it is not within city borders." << std::endl;
     return false;
   }
@@ -176,17 +181,12 @@ bool canPlaceBuilding(const BacktrackState& state, Coord coord) {
   }
 
   // Building exists in city already
-  if (state.curBuildingsInCity.find(state.map[row][col].owner) != state.curBuildingsInCity.end()) {
-    // std::cout << state.curBuildingsInCity.at(state.map[row][col].owner).row << ", " << state.curBuildingsInCity.at(state.map[row][col].owner).col << std::endl;
-    // std::cout << "Cannot place building at (" << row << ", " << col << ") because a building already exists in this city." << std::endl;
+  if (state.curBuildingsInCity[cityId] != Coord{-1, -1}) {
     return false;
   }
 
-  // Already occupied by something we just placed
-  // SANITY CHECK, DONT NEED since we already checked the map
-  if (state.curBuildingsSet.find(coord) != state.curBuildingsSet.end() || 
-      state.curMarketsSet.find(coord) != state.curMarketsSet.end()) {
-    // std::cout << "Cannot place building at (" << row << ", " << col << ") because it is already occupied." << std::endl;
+  // Market exists on that exact tile already
+  if (state.curMarketsInCity[cityId] == coord) {
     return false;
   }
 
@@ -199,10 +199,9 @@ bool canPlaceBuilding(const BacktrackState& state, Coord coord) {
     if (inBounds(state.map, adjacentCoord) &&
        (state.map[ny][nx].type == RESOURCE || 
        state.map[ny][nx].type == USED_RESOURCE) && 
-       state.curBuildingsSet.find(adjacentCoord) == state.curBuildingsSet.end() &&
-       state.curMarketsSet.find(adjacentCoord) == state.curMarketsSet.end()) {
-
-      return true;
+       find(state.curBuildingsInCity.begin(), state.curBuildingsInCity.end(), adjacentCoord) == state.curBuildingsInCity.end() && 
+       find(state.curMarketsInCity.begin(), state.curMarketsInCity.end(), adjacentCoord) == state.curMarketsInCity.end()) {
+       return true;
     }
   }
 
@@ -214,25 +213,33 @@ bool canPlaceBuilding(const BacktrackState& state, Coord coord) {
 /*
 Defined in marketcalc.h
 */
-BacktrackResult backtrackPlacements(BacktrackState& state, int cityIdx, bool placingBuilding) {
+int backtrackPlacements(BacktrackState& state, int cityIdx, bool placingBuilding) {
   // Base case (step 3): cityIdx is at the end and placingBuilding is false, calculate market total
 
+  // Clear out bestLayoutCurrent just to be safe
+  for (int i = 0; i < (int)state.bestLayoutCurrent.size(); i++) {
+    for (int j = 0; j < (int)state.bestLayoutCurrent[0].size(); j++) {
+      state.bestLayoutCurrent[i][j] = TileState{-1, EMPTY};
+    }
+  }
   if (!placingBuilding && cityIdx == (int)state.cityCenters.size()) {
-    vector<vector<TileState>> finalMap = state.map;
-    for (const auto& building : state.curBuildingsSet) {
-      finalMap[building.row][building.col].type = BUILDING;
+    for (int i = 0; i < (int)state.map.size(); i++) {
+      for (int j = 0; j < (int)state.map[0].size(); j++) {
+        if (state.curBuildingsInCity[cityIdx] == Coord{i, j}) {
+          state.bestLayoutReturn[i][j] = TileState{state.map[i][j].owner, BUILDING};
+        }
+        else if (state.curMarketsInCity[cityIdx] == Coord{i, j}) {
+          state.bestLayoutReturn[i][j] = TileState{state.map[i][j].owner, MARKET};
+        }
+        else {
+          state.bestLayoutReturn[i][j] = state.map[i][j];
+        }
+      }
     }
-    for (const auto& market : state.curMarketsSet) {
-      finalMap[market.row][market.col].type = MARKET;
-    }
-    return BacktrackResult {
-      calculateMarketTotal(state),
-      finalMap,
-    };
+    return calculateMarketTotal(state);
   }
 
-  // Not base case: we may have bestResults passed to us from recursion
-  BacktrackResult bestResult;
+  int bestMarketTotal = 0;
 
   // Recursive case 2 (step 2): PLACE A MARKET 
   // (placingBuilding is false, OR placingBuilding is true AND cityIdx is at the end)
@@ -244,7 +251,7 @@ BacktrackResult backtrackPlacements(BacktrackState& state, int cityIdx, bool pla
       placingBuilding = false;
     }
     // Guarenteed choice: we may decide not to place a market
-    bestResult = backtrackPlacements(state, cityIdx + 1, placingBuilding);
+    bestMarketTotal = backtrackPlacements(state, cityIdx + 1, placingBuilding);
     
     // If no markets exist in this city, we may try placing markets in all valid tiles
     const auto& placeableTiles = state.tilesOwnedByCity.at(cityIdx);
@@ -252,17 +259,21 @@ BacktrackResult backtrackPlacements(BacktrackState& state, int cityIdx, bool pla
         if (canPlaceMarket(state, tile)) {
             // Place market
             state.curMarketsInCity[cityIdx] = tile;
-            state.curMarketsSet.insert(tile);
 
             // Recurse to next city and placing market
-            BacktrackResult result = backtrackPlacements(state, cityIdx + 1, placingBuilding);
-            if (result.bestMarketTotal > bestResult.bestMarketTotal) {
-              bestResult = result;
+            int result = backtrackPlacements(state, cityIdx + 1, placingBuilding);
+            if (result > bestMarketTotal) {
+              bestMarketTotal = result;
+              // Set our current best layout to the returned layout as it is better
+              for (int i = 0; i < (int)state.bestLayoutCurrent.size(); i++) {
+                for (int j = 0; j < (int)state.bestLayoutCurrent[0].size(); j++) {
+                  state.bestLayoutCurrent[i][j] = state.bestLayoutReturn[i][j];
+                }
+              }
             }
 
             // Backtrack
-            state.curMarketsInCity.erase(cityIdx);
-            state.curMarketsSet.erase(tile);
+            state.curMarketsInCity[cityIdx] = Coord{-1, -1};
         }
     }
   }
@@ -273,7 +284,12 @@ BacktrackResult backtrackPlacements(BacktrackState& state, int cityIdx, bool pla
 
 
     // Guarenteed choice: we may decide not to place a building
-    bestResult = backtrackPlacements(state, cityIdx + 1, placingBuilding);
+    backtrackPlacements(state, cityIdx + 1, placingBuilding);
+    for (int i = 0; i < (int)state.bestLayoutCurrent.size(); i++) {
+      for (int j = 0; j < (int)state.bestLayoutCurrent[0].size(); j++) {
+        state.bestLayoutCurrent[i][j] = state.bestLayoutReturn[i][j];
+      }
+    }
 
     // Attempt to place a building in each tile
     // Update all nearby building and market levels
@@ -282,17 +298,21 @@ BacktrackResult backtrackPlacements(BacktrackState& state, int cityIdx, bool pla
         if (canPlaceBuilding(state, tile)) {
             // Place building
             state.curBuildingsInCity[cityIdx] = tile;
-            state.curBuildingsSet.insert(tile);
 
             // Recurse to next city and placing market
-            BacktrackResult result = backtrackPlacements(state, cityIdx + 1, placingBuilding);
-            if (result.bestMarketTotal > bestResult.bestMarketTotal) {
-                bestResult = result;
+            int result = backtrackPlacements(state, cityIdx + 1, placingBuilding);
+            if (result > bestMarketTotal) {
+              bestMarketTotal = result;
+              // Set our current best layout to the returned layout as it is better
+              for (int i = 0; i < (int)state.bestLayoutCurrent.size(); i++) {
+                for (int j = 0; j < (int)state.bestLayoutCurrent[0].size(); j++) {
+                  state.bestLayoutCurrent[i][j] = state.bestLayoutReturn[i][j];
+                }
+              }
             }
 
             // Backtrack
-            state.curBuildingsInCity.erase(cityIdx);
-            state.curBuildingsSet.erase(tile);
+            state.curBuildingsInCity[cityIdx] = Coord{-1, -1};
         }
     }
   }
@@ -300,45 +320,73 @@ BacktrackResult backtrackPlacements(BacktrackState& state, int cityIdx, bool pla
   else {
     throw std::invalid_argument("Invalid state in backtrackPlacements: placingBuilding is " + std::to_string(placingBuilding) + " and cityIdx is " + std::to_string(cityIdx));
   }
+  // Copy bestLayoutCurrent to bestLayoutReturn
+  for (int i = 0; i < (int)state.bestLayoutCurrent.size(); i++) {
+    for (int j = 0; j < (int)state.bestLayoutCurrent[0].size(); j++) {
+      state.bestLayoutReturn[i][j] = state.bestLayoutCurrent[i][j];
+    }
+  }
 
-  return bestResult;
+  return bestMarketTotal;
 }
 
 /*
 Defined in marketcalc.h
 */
 int calculateMarketTotal(const BacktrackState& state) {
+
+  // Clear out building levels array instate
+  for (int i = 0; i < (int)state.buildingLevelsCurrent.size(); i++) {
+    state.buildingLevelsCurrent[i] = 0;
+  }
+
   // Calculate all building levels
-  unordered_map<Coord, int> buildingLevels;
-  for (const auto& buildingCoord : state.curBuildingsSet) {
+  for (int i = 0; i < (int)state.curBuildingsInCity.size(); i++) {
+    Coord buildingCoord = state.curBuildingsInCity[i];
+
+    // No building in city = 0 level
+    if (buildingCoord == Coord{-1, -1}) {
+      state.buildingLevelsCurrent[i] = 0;
+      continue;
+    }
     // Go 8 directionally and add up all the uncovered resource tiles
     int buildingLevel = 0;
-    for (int i = 0; i < BASE_TILE_COUNT; i++) {
-      int ny = buildingCoord.row + dx[i];
-      int nx = buildingCoord.col + dy[i];
+    for (int j = 0; j < BASE_TILE_COUNT; j++) {
+      int ny = buildingCoord.row + dx[j];
+      int nx = buildingCoord.col + dy[j];
       Coord adjacentCoord = {ny, nx};
       if (inBounds(state.map, adjacentCoord) &&
           (state.map[ny][nx].type == RESOURCE || state.map[ny][nx].type == USED_RESOURCE) &&
-          state.curBuildingsSet.find(adjacentCoord) == state.curBuildingsSet.end() &&
-          state.curMarketsSet.find(adjacentCoord) == state.curMarketsSet.end()) {
+          find(state.curBuildingsInCity.begin(), state.curBuildingsInCity.end(), adjacentCoord) == state.curBuildingsInCity.end() &&
+          find(state.curMarketsInCity.begin(), state.curMarketsInCity.end(), adjacentCoord) == state.curMarketsInCity.end()) {
         buildingLevel++;
       }
     }
-    buildingLevels[buildingCoord] = std::min(buildingLevel, MAX_BUILDING_LEVEL);
+    state.buildingLevelsCurrent[i] = std::min(buildingLevel, MAX_BUILDING_LEVEL);
   }
 
   int totalMarketLevel = 0;
 
   // Next, calculate all market levels
-  for (const auto& marketCoord : state.curMarketsSet) {
+  for (int i = 0; i < (int)state.curMarketsInCity.size(); i++) {
+    Coord marketCoord = state.curMarketsInCity[i];
+
+    // No market in city = 0 level
+    if (marketCoord == Coord{-1, -1}) {
+      continue;
+    }
     int marketLevel = 0;
-    for (int i = 0; i < BASE_TILE_COUNT; i++) {
-      int nx = marketCoord.row + dx[i];
-      int ny = marketCoord.col + dy[i];
+    for (int j = 0; j < BASE_TILE_COUNT; j++) {
+      int nx = marketCoord.row + dx[j];
+      int ny = marketCoord.col + dy[j];
       Coord adjacentCoord = {nx, ny};
-      if (inBounds(state.map, adjacentCoord) &&
-          state.curBuildingsSet.find(adjacentCoord) != state.curBuildingsSet.end()) {
-        marketLevel += buildingLevels[adjacentCoord];
+      if (inBounds(state.map, adjacentCoord)) {
+        int adjacentCoordOwner = state.map[adjacentCoord.row][adjacentCoord.col].owner;
+        // If adjacent tile is owned by a city, add the building level of that city
+        // The building level will be positive only if there is a building there
+        if (adjacentCoordOwner != -1) {
+          marketLevel += state.buildingLevelsCurrent[adjacentCoordOwner];
+        }
       }
     }
     marketLevel = std::min(marketLevel, MAX_MARKET_LEVEL);
@@ -351,7 +399,7 @@ int calculateMarketTotal(const BacktrackState& state) {
 /*
 Defined in marketcalc.h
 */
-BacktrackResult findBestMarketLayout(vector<vector<int>>& map, 
+BacktrackState findBestMarketLayout(vector<vector<int>>& map, 
                                     const vector<Coord>& cityCenters,
                                     const vector<int>& actionOrder) {
   // Create tileState map from raw tile map
@@ -376,22 +424,30 @@ BacktrackResult findBestMarketLayout(vector<vector<int>>& map,
   }
 
   // Put existing buildings and markets in state
-  unordered_map<int, Coord> curBuildingsInCity;
-  unordered_set<Coord> curBuildingsSet;
-  unordered_map<int, Coord> curMarketsInCity;
-  unordered_set<Coord> curMarketsSet;
+  vector<Coord> curBuildingsInCity(cityCenters.size(), Coord{-1, -1});
+  vector<Coord> curMarketsInCity(cityCenters.size(), Coord{-1, -1});
   for (int i = 0; i < (int)tileMap.size(); i++) {
     for (int j = 0; j < (int)tileMap[0].size(); j++) {
+      int cityId = tileMap[i][j].owner; 
       if (tileMap[i][j].type == BUILDING) {
-        curBuildingsInCity[tileMap[i][j].owner] = Coord{i, j};
-        curBuildingsSet.insert(Coord{i, j});
+        if (curBuildingsInCity[cityId] != Coord{-1, -1}) {
+          throw std::invalid_argument("Multiple buildings in city " + std::to_string(cityId));
+        }
+        curBuildingsInCity[cityId] = Coord{i, j};
       }
       else if (tileMap[i][j].type == MARKET) {
-        curMarketsInCity[tileMap[i][j].owner] = Coord{i, j};
-        curMarketsSet.insert(Coord{i, j});
+        int cityId = tileMap[i][j].owner;
+        if (curMarketsInCity[cityId] != Coord{-1, -1}) {
+          throw std::invalid_argument("Multiple markets in city " + std::to_string(cityId));
+        }
+        curMarketsInCity[cityId] = Coord{i, j};
       }
     }
   }
+
+  vector<vector<TileState>> bestLayoutReturn = tileMap;
+  vector<vector<TileState>> bestLayoutCurrent = tileMap;
+  vector<int> buildingLevelsCurrent(cityCenters.size(), 0);
 
   BacktrackState state{
     tileMap,
@@ -399,12 +455,15 @@ BacktrackResult findBestMarketLayout(vector<vector<int>>& map,
     tilesOwnedByCity,
 
     curBuildingsInCity,
-    curBuildingsSet,
     curMarketsInCity,
-    curMarketsSet,
+    bestLayoutReturn,
+    bestLayoutCurrent,
+    buildingLevelsCurrent,
   };
 
-  return backtrackPlacements(state, 0, true);
+  // int bestMarketTotal = 
+  backtrackPlacements(state, 0, true);
+  return state;
 }
 
 
@@ -474,13 +533,13 @@ extern "C" {
         }
 
 
-        BacktrackResult result = findBestMarketLayout(map, cityCenters, actionOrder);
+        BacktrackState state = findBestMarketLayout(map, cityCenters, actionOrder);
 
         // Allocate memory for the result layout and return it
         int* resultLayout = new int[rows * cols];
         for (int i = 0; i < rows; i++) {
             for (int j = 0; j < cols; j++) {
-                resultLayout[i * cols + j] = result.bestLayout[i][j].type;
+                resultLayout[i * cols + j] = state.bestLayoutReturn[i][j].type;
             }
         }
         return resultLayout;

@@ -1,0 +1,42 @@
+[
+  {
+    "directory": "/Users/owenfei/lc/marketcalc",
+    "command": "g++ -std=c++17 -Wall -Wextra -O2 -g -I/opt/homebrew/opt/googletest/include -I. -Itests -c marketcalc.cc",
+    "file": "marketcalc.cc"
+  },
+  {
+    "directory": "/Users/owenfei/lc/marketcalc",
+    "command": "g++ -std=c++17 -Wall -Wextra -O2 -g -I/opt/homebrew/opt/googletest/include -I. -Itests -c tests/test_main.cc",
+    "file": "tests/test_main.cc"
+  },
+  {
+    "directory": "/Users/owenfei/lc/marketcalc",
+    "command": "g++ -std=c++17 -Wall -Wextra -O2 -g -I/opt/homebrew/opt/googletest/include -I. -Itests -c tests/backtrack_placements_tests.cc",
+    "file": "tests/backtrack_placements_tests.cc"
+  },
+  {
+    "directory": "/Users/owenfei/lc/marketcalc",
+    "command": "g++ -std=c++17 -Wall -Wextra -O2 -g -I/opt/homebrew/opt/googletest/include -I. -Itests -c tests/calculate_market_total_tests.cc",
+    "file": "tests/calculate_market_total_tests.cc"
+  },
+  {
+    "directory": "/Users/owenfei/lc/marketcalc",
+    "command": "g++ -std=c++17 -Wall -Wextra -O2 -g -I/opt/homebrew/opt/googletest/include -I. -Itests -c tests/can_place_building_tests.cc",
+    "file": "tests/can_place_building_tests.cc"
+  },
+  {
+    "directory": "/Users/owenfei/lc/marketcalc",
+    "command": "g++ -std=c++17 -Wall -Wextra -O2 -g -I/opt/homebrew/opt/googletest/include -I. -Itests -c tests/can_place_market_tests.cc",
+    "file": "tests/can_place_market_tests.cc"
+  },
+  {
+    "directory": "/Users/owenfei/lc/marketcalc",
+    "command": "g++ -std=c++17 -Wall -Wextra -O2 -g -I/opt/homebrew/opt/googletest/include -I. -Itests -c tests/compute_ownership_tests.cc",
+    "file": "tests/compute_ownership_tests.cc"
+  },
+  {
+    "directory": "/Users/owenfei/lc/marketcalc",
+    "command": "g++ -std=c++17 -Wall -Wextra -O2 -g -I/opt/homebrew/opt/googletest/include -I. -Itests -c tests/full_tests.cc",
+    "file": "tests/full_tests.cc"
+  }
+]

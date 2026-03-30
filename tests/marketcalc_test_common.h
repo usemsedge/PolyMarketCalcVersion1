@@ -7,6 +7,9 @@
 
 using std::vector;
 
+inline vector<vector<TileState>> garbageMap;
+inline vector<int> garbageInts;
+
 
 inline constexpr TileState T(int owner, int type) {
   return TileState{owner, type};
@@ -58,9 +61,14 @@ inline vector<Coord> makeNoSpecialCityCenters() {
    (empty) = EMPTY
   */
 inline BacktrackState makeRealState() {
-  static vector<vector<TileState>> map;
-  static vector<Coord> cityCenters;
-  static unordered_map<int, vector<Coord>> tilesOwnedByCity;
+  vector<vector<TileState>> map;
+  vector<Coord> cityCenters;
+  unordered_map<int, vector<Coord>> tilesOwnedByCity;
+  vector<Coord> curBuildingsInCity;
+  vector<Coord> curMarketsInCity;
+  vector<vector<TileState>> bestLayoutReturn;
+  vector<vector<TileState>> bestLayoutCurrent;
+  vector<int> buildingLevelsCurrent;
 
   map = {
     {T(0, EMPTY), T(0, EMPTY), T(0, OBSTACLE), T(0, EMPTY), T(-1, EMPTY), T(-1, EMPTY)},
@@ -103,37 +111,29 @@ inline BacktrackState makeRealState() {
     Coord{6, 0}, Coord{6, 1}, Coord{6, 2}, Coord{6, 3},
   };
 
-  // 2 buildings placed
-  unordered_set<Coord> curBuildingsSet = {
-    Coord{1, 2},
-    Coord{5, 2},
-  };
-
-  // Building ownership by city
-  unordered_map<int, Coord> curBuildingsInCity = {
-    {0, Coord{1, 2}},
-    {2, Coord{5, 2}},
+  // 2 buildings placed — per city ID
+  curBuildingsInCity = {
+      Coord{1, 2},
+      Coord{-1, -1},
+      Coord{5, 2},
   };
 
   // 1 market placed
-  unordered_set<Coord> curMarketsSet = {
-    Coord{4, 2},
-  };
-
-  // Market ownership by city
-  unordered_map<int, Coord> curMarketsInCity = {
-    {2, Coord{4, 2}},
+  curMarketsInCity = {
+      Coord{-1, -1},
+      Coord{-1, -1},
+      Coord{4, 2},
   };
 
   return BacktrackState{
-    map,
-    cityCenters,
-    tilesOwnedByCity,
-
-    curBuildingsInCity,
-    curBuildingsSet,
-    curMarketsInCity,
-    curMarketsSet,
+      map,
+      cityCenters,
+      tilesOwnedByCity,
+      curBuildingsInCity,
+      curMarketsInCity,
+      bestLayoutReturn,
+      bestLayoutCurrent,
+      buildingLevelsCurrent,
   };
 }
 
