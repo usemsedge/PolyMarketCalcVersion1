@@ -8,7 +8,8 @@
 using std::vector;
 
 inline vector<vector<TileState>> garbageMap;
-inline vector<int> garbageInts = {0, 0, 0, 0, 0, 0, 0, 0};
+inline vector<vector<vector<TileState>>> garbageTempLayouts;
+inline vector<int> garbageInts = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 
 

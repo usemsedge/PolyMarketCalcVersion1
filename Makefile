@@ -11,7 +11,9 @@ SRC = $(TEST_SRC) tests/test_main.cc marketcalc.cc
 EMCC ?= emcc
 WASM_JS = marketcalc.js
 # Sync with extern "C" in marketcalc.cc. Use _main_wasm here only if you define it.
-EMFLAGS = -std=c++17 -O2 \
+# -g + --profiling-funcs: wasm "name" section for Firefox Profiler (C++ symbol names).
+# -gsource-map: .wasm.map for DevTools source-level view (serve beside .wasm).
+EMFLAGS = -std=c++17 -O2 -g -gsource-map --profiling-funcs \
 	-s MODULARIZE=1 \
 	-s EXPORT_NAME=createModule \
 	-s EXPORT_ES6=1 \
@@ -37,5 +39,5 @@ run: $(WASM_JS)
 	node server.js
 
 clean:
-	rm -f $(TARGET) $(WASM_JS) marketcalc.wasm 
+	rm -f $(TARGET) $(WASM_JS) marketcalc.wasm marketcalc.wasm.map
 	rm -rf marketcalc_tests.dSYM

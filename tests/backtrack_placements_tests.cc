@@ -15,7 +15,6 @@ void prettyPrintOwners(const vector<vector<TileState>>& map) {
 
 
 TEST(backtrackPlacements, Tiny1Building1Market_BaseCase_DoNothing) {
-  GTEST_SKIP();
   /*
   Creates a very simple map with 1 city 1 buildings 1 market
     |____
@@ -57,7 +56,7 @@ TEST(backtrackPlacements, Tiny1Building1Market_BaseCase_DoNothing) {
 
   vector<int> buildingLevelsCurrent = {0};
   vector<vector<TileState>> bestLayoutReturn = map;
-  vector<vector<TileState>> bestLayoutCurrent = map;
+  vector<vector<vector<TileState>>> tempLayouts = {map, map};
 
   BacktrackState state = BacktrackState{
     map,
@@ -67,7 +66,7 @@ TEST(backtrackPlacements, Tiny1Building1Market_BaseCase_DoNothing) {
     curBuildingsInCity,
     curMarketsInCity,
     bestLayoutReturn,
-    bestLayoutCurrent,
+    tempLayouts,
     buildingLevelsCurrent,
   };
   vector<vector<TileState>> expectedMap = state.map;
@@ -81,7 +80,6 @@ TEST(backtrackPlacements, Tiny1Building1Market_BaseCase_DoNothing) {
 }
 
 TEST(backtrackPlacements, Tiny1Building0Market_1Deep_PlaceMarket) {
-  GTEST_SKIP();
   /*
   Creates a very simple map with 1 city 1 buildings 0 markets
     |____
@@ -123,7 +121,7 @@ TEST(backtrackPlacements, Tiny1Building0Market_1Deep_PlaceMarket) {
 
   vector<int> buildingLevelsCurrent = {0};
   vector<vector<TileState>> bestLayoutReturn = map;
-  vector<vector<TileState>> bestLayoutCurrent = map;
+  vector<vector<vector<TileState>>> tempLayouts = {map, map};
 
   BacktrackState state = BacktrackState{
     map,
@@ -133,7 +131,7 @@ TEST(backtrackPlacements, Tiny1Building0Market_1Deep_PlaceMarket) {
     curBuildingsInCity,
     curMarketsInCity,
     bestLayoutReturn,
-    bestLayoutCurrent,
+    tempLayouts,
     buildingLevelsCurrent,
   };
 
@@ -192,7 +190,7 @@ TEST(backtrackPlacements, Tiny0Building0Market_2Deep_PlaceMarket) {
   };
 
   vector<vector<TileState>> bestLayoutReturn = map;
-  vector<vector<TileState>> bestLayoutCurrent = map;
+  vector<vector<vector<TileState>>> tempLayouts = {map, map};
 
   vector<int> buildingLevelsCurrent = {0};
 
@@ -204,7 +202,7 @@ TEST(backtrackPlacements, Tiny0Building0Market_2Deep_PlaceMarket) {
     curBuildingsInCity,
     curMarketsInCity,
     bestLayoutReturn,
-    bestLayoutCurrent,
+    tempLayouts,
     buildingLevelsCurrent,
   };
   vector<vector<TileState>> expectedMap = state.map;
@@ -219,11 +217,6 @@ TEST(backtrackPlacements, Tiny0Building0Market_2Deep_PlaceMarket) {
   // Testing full recursion through both cases
   int result = backtrackPlacements(state, 0, true);
 
-  prettyPrint(state.bestLayoutReturn);
-  prettyPrint(expectedMap1);
-  std::cout << "Owners: " << std::endl; 
-  prettyPrintOwners(state.bestLayoutReturn);
-  prettyPrintOwners(expectedMap1);
 
   EXPECT_EQ(2, result);
   EXPECT_TRUE(expectedMap1 == state.bestLayoutReturn || expectedMap2 == state.bestLayoutReturn);
@@ -231,7 +224,6 @@ TEST(backtrackPlacements, Tiny0Building0Market_2Deep_PlaceMarket) {
 
 
 TEST(backtrackPlacements, 2CitiesMaxMarkets) {
-  GTEST_SKIP();
   vector<vector<TileState>> map = {
     {T(0, EMPTY), T(0, RESOURCE), T(0, RESOURCE), T(1, RESOURCE), T(1, RESOURCE), T(1, EMPTY)},
     {T(0, EMPTY), T(0, CITY), T(0, RESOURCE), T(1, RESOURCE), T(1, CITY), T(1, EMPTY)},
@@ -253,10 +245,10 @@ TEST(backtrackPlacements, 2CitiesMaxMarkets) {
     Coord{2, 3}, Coord{2, 4}, Coord{2, 5},
   });
 
-  vector<Coord> curBuildingsInCity = {};
-  vector<Coord> curMarketsInCity = {};
+  vector<Coord> curBuildingsInCity(2, Coord{-1, -1});
+  vector<Coord> curMarketsInCity(2, Coord{-1, -1});
   vector<vector<TileState>> bestLayoutReturn = map;
-  vector<vector<TileState>> bestLayoutCurrent = map;
+  vector<vector<vector<TileState>>> tempLayouts(4, map);
   vector<int> buildingLevelsCurrent = {0, 0};
 
   BacktrackState state{
@@ -267,13 +259,12 @@ TEST(backtrackPlacements, 2CitiesMaxMarkets) {
     curBuildingsInCity,
     curMarketsInCity,
     bestLayoutReturn,
-    bestLayoutCurrent,
+    tempLayouts,
     buildingLevelsCurrent,
   };
 
   int result = backtrackPlacements(state, 0, true);
 
-  std::cout << "done" << std::endl;
 
   EXPECT_EQ(16, result);
 

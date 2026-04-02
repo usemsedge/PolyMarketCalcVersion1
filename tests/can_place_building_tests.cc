@@ -64,7 +64,7 @@ TEST(canPlaceBuilding, RealState) {
     tilesOwnedByCity,
     curBuildingsInCity,
     curMarketsInCity,
-    garbageMap, garbageMap, garbageInts
+    garbageMap, garbageTempLayouts, garbageInts
   };
 
   // Loop through every possible building placement and make sure it matches expected results

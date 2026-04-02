@@ -21,9 +21,6 @@ constexpr int BUILDING = 4;
 constexpr int MARKET = 5;
 constexpr int USED_RESOURCE = 6;
 
-
-
-
 struct TileState {
   int owner; // city ID that owns this tile, or -1 if unowned
   int type; // tile type (EMPTY, CITY, OBSTACLE, RESOURCE, BUILDING, MARKET)
@@ -50,6 +47,11 @@ struct Coord {
   }
 };
 
+// Result structure
+struct BacktrackResult {
+  int bestMarketTotal;
+  vector<vector<TileState>> bestLayout;
+};
 
 // State structure
 struct BacktrackState {
@@ -77,9 +79,12 @@ struct BacktrackState {
     // Returns through this
     vector<vector<TileState>>& bestLayoutReturn;
 
-    // 2 temporary data structures
-    // These may be cleared upon start of each call
-    vector<vector<TileState>>& bestLayoutCurrent;
+    // Temp layouts that each recursion depth will use
+    // Invariant: Recursion depth i only uses layouts[i]
+    vector<vector<vector<TileState>>>& tempLayouts;
+
+    // Temp data structure for building levels
+    // Cleared upon start of calculateMarketTotal and is only used there
     vector<int>& buildingLevelsCurrent;
 };
 
@@ -228,8 +233,10 @@ state: current backtracking state
       which should have consistent ownership, building placements, and market placements
 
       Data in the following fields will be destroyed and they will be used
+      tempLayouts has length of max recursion depth (2 * cityCenters.size())
+        each item has same dimensions as map
+        Recursion depth i (cityIdx + -placingBuilding * cityCenters.size()) only uses tempLayouts[i]
       bestLayoutReturn must have same dimensions as map
-      bestLayoutCurrent must have same dimensions as map
       buildingLevelsCurrent must have same size as cityCenters
 cityIdx: which city we are currently trying to place a building/market for, corresponds to city ID
 placingBuilding: true if placing building, false if placing market
@@ -278,10 +285,9 @@ vector<int> actionOrder: order in which each city is captured and border growths
       All city IDs in cityCenters must appear at least once in actionOrder, but at most twice.
 
 Return:
-BacktrackState
-Best result contained in state.bestLayoutReturn
+BacktrackResult: bestMarketTotal and bestLayoutReturn
 */
-BacktrackState findBestMarketLayout(vector<vector<int>>& map, 
+BacktrackResult findBestMarketLayout(vector<vector<int>>& map, 
                                     const vector<Coord>& cityCenters,
                                     const vector<int>& actionOrder);
 

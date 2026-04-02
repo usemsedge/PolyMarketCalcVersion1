@@ -30,5 +30,13 @@ Debugging is a pain
 PROBLEM: I tried to save space by having a bestlayoutcurrent and a bestlayoutreturn.
 Only those two data structures for storing intermediate layouts during calculation.
 However, you need an additional bestlayoutcurrent for every recursion depth because
-they will eat into each other, and I failed to consider that and spent 2 hours debugging
-for this issue.
+they will eat into each other, and I failed to consider that and spent 2 hours deb:w
+ugging
+for this issue.:w
+
+
+
+recursive backtracking to find the best possible arrangement of stuff
+(best place to place a market in EACH city)
+each recursion depth places the market in 1 city
+  then calls recursion depth + 1 and finds the best layout for each 

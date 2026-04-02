@@ -64,7 +64,7 @@ TEST(canPlaceMarket, RealState) {
     tilesOwnedByCity,
     curBuildingsInCity,
     curMarketsInCity,
-    garbageMap, garbageMap, garbageInts
+    garbageMap, garbageTempLayouts, garbageInts
   };
 
   // Loop through every possible market placement and make sure it matches expected results

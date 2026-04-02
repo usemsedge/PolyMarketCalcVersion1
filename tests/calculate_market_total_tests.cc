@@ -66,7 +66,7 @@ TEST(calculateMarketTotal, RealState) {
     tilesOwnedByCity,
     curBuildingsInCity,
     curMarketsInCity,
-    garbageMap, garbageMap, garbageInts
+    garbageMap, garbageTempLayouts, garbageInts
   };
 
 
@@ -125,7 +125,7 @@ TEST(calculateMarketTotal, 2CityBestPlacementInitially) {
 
     curBuildingsInCity,
     curMarketsInCity,
-    garbageMap, garbageMap, garbageInts
+    garbageMap, garbageTempLayouts, garbageInts
   });
   EXPECT_EQ(expected, actual);
 }
@@ -176,7 +176,7 @@ TEST(calculateMarketTotal, 2CityGoodPlacementFromBacktracking) {
 
     curBuildingsInCity,
     curMarketsInCity,
-    garbageMap, garbageMap, garbageInts
+    garbageMap, garbageTempLayouts, garbageInts
   };
 
   int expected = 9;
@@ -225,7 +225,7 @@ TEST(calculateMarketTotal, CapMarketLevel) {
 
     curBuildingsInCity,
     curMarketsInCity,
-    garbageMap, garbageMap, garbageInts
+    garbageMap, garbageTempLayouts, garbageInts
   };
 
   int expected = std::min(10, MAX_MARKET_LEVEL);
@@ -262,8 +262,6 @@ TEST(calculateMarketTotal, Case1) {
   };
 
   vector<int> buildingLevelsCurrent = {0};
-  vector<vector<TileState>> bestLayoutReturn = map;
-  vector<vector<TileState>> bestLayoutCurrent = map;
 
   BacktrackState state = BacktrackState{
     map,
@@ -272,8 +270,8 @@ TEST(calculateMarketTotal, Case1) {
 
     curBuildingsInCity,
     curMarketsInCity,
-    bestLayoutReturn,
-    bestLayoutCurrent,
+    garbageMap,
+    garbageTempLayouts,
     buildingLevelsCurrent,
   };
 

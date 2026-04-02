@@ -16,26 +16,6 @@ Basically testing everything
 
 */
 
-void prettyPrint(const vector<vector<TileState>>& map) {
-  for (const auto& row : map) {
-    for (const auto& tile : row) {
-      char c;
-      switch (tile.type) {
-        case EMPTY: c = '.'; break;
-        case CITY: c = 'C'; break;
-        case OBSTACLE: c = 'X'; break;
-        case RESOURCE: c = 'R'; break;
-        case BUILDING: c = 'B'; break;
-        case MARKET: c = 'M'; break;
-        case USED_RESOURCE: c = 'R'; break;
-        default: c = '?';
-      }
-      std::cout << c << " ";
-    }
-    std::cout << std::endl;
-  }
-}
-
 
 TEST(full, TwoCitiesMaxMarkets) {
   vector<vector<int>> map = {

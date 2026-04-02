@@ -221,7 +221,9 @@ int backtrackPlacements(BacktrackState& state, int cityIdx, bool placingBuilding
   }
 
   int bestMarketTotal = 0;
-  TileState[][] bestLayoutCurrent;
+  // Adds cityCenters.size() if not placing buildings (since markets are placed after)
+  int recursionDepth = cityIdx + (placingBuilding ? 0 : (int)state.cityCenters.size());
+  vector<vector<TileState>>& tempLayout = state.tempLayouts.at(recursionDepth);
 
   // Recursive case 2 (step 2): PLACE A MARKET 
   // (placingBuilding is false, OR placingBuilding is true AND cityIdx is at the end)
@@ -233,14 +235,10 @@ int backtrackPlacements(BacktrackState& state, int cityIdx, bool placingBuilding
       placingBuilding = false;
     }
     // Guarenteed choice: we may decide not to place a market
-    // Set best total and place returned best layout into bestLayoutCurrent
+    // Set best total and place returned best layout into tempLayout
     bestMarketTotal = backtrackPlacements(state, cityIdx + 1, placingBuilding);
-    for (int row = 0; row < (int)state.map.size(); row++) {
+    tempLayout = state.bestLayoutReturn;
 
-      for (int col = 0; col < (int)state.map[0].size(); col++) {
-        state.bestLayoutCurrent[row][col] = state.bestLayoutReturn[row][col];
-      }
-    }
     // If no markets exist in this city, we may try placing markets in all valid tiles
     const auto& placeableTiles = state.tilesOwnedByCity.at(cityIdx);
     for (const auto& tile : placeableTiles) {
@@ -253,11 +251,8 @@ int backtrackPlacements(BacktrackState& state, int cityIdx, bool placingBuilding
             if (result > bestMarketTotal) {
               bestMarketTotal = result;
               // Set our current best layout to the returned layout as it is better
-              for (int row = 0; row < (int)state.bestLayoutCurrent.size(); row++) {
-                for (int col = 0; col < (int)state.bestLayoutCurrent[0].size(); col++) {
-                  state.bestLayoutCurrent[row][col] = state.bestLayoutReturn[row][col];
-                }
-              }
+              // Copy bestLayoutReturn to tempLayout
+              tempLayout = state.bestLayoutReturn;
             }
 
             // Backtrack
@@ -273,11 +268,7 @@ int backtrackPlacements(BacktrackState& state, int cityIdx, bool placingBuilding
 
     // Guarenteed choice: we may decide not to place a building
     bestMarketTotal = backtrackPlacements(state, cityIdx + 1, placingBuilding);
-    for (int row = 0; row < (int)state.map.size(); row++) {
-      for (int col = 0; col < (int)state.map[0].size(); col++) {
-        state.bestLayoutCurrent[row][col] = state.bestLayoutReturn[row][col];
-      }
-    }
+    tempLayout = state.bestLayoutReturn;
 
     // Attempt to place a building in each tile
     // Update all nearby building and market levels
@@ -292,11 +283,7 @@ int backtrackPlacements(BacktrackState& state, int cityIdx, bool placingBuilding
             if (result > bestMarketTotal) {
               bestMarketTotal = result;
               // Set our current best layout to the returned layout as it is better
-              for (int i = 0; i < (int)state.bestLayoutCurrent.size(); i++) {
-                for (int j = 0; j < (int)state.bestLayoutCurrent[0].size(); j++) {
-                  state.bestLayoutCurrent[i][j] = state.bestLayoutReturn[i][j];
-                }
-              }
+              tempLayout = state.bestLayoutReturn;
             }
 
             // Backtrack
@@ -308,14 +295,8 @@ int backtrackPlacements(BacktrackState& state, int cityIdx, bool placingBuilding
   else {
     throw std::invalid_argument("Invalid state in backtrackPlacements: placingBuilding is " + std::to_string(placingBuilding) + " and cityIdx is " + std::to_string(cityIdx));
   }
-  // Copy bestLayoutCurrent to bestLayoutReturn
-  for (int i = 0; i < (int)state.bestLayoutReturn.size(); i++) {
-    for (int j = 0; j < (int)state.bestLayoutReturn[0].size(); j++) {
-      state.bestLayoutReturn[i][j] = state.bestLayoutCurrent[i][j];
-    }
-  }
-  
-
+  // Copy tempLayout to bestLayoutReturn
+  state.bestLayoutReturn = tempLayout;
   
   return bestMarketTotal;
 }
@@ -392,7 +373,7 @@ int calculateMarketTotal(const BacktrackState& state) {
 /*
 Defined in marketcalc.h
 */
-BacktrackState findBestMarketLayout(vector<vector<int>>& map, 
+BacktrackResult findBestMarketLayout(vector<vector<int>>& map, 
                                     const vector<Coord>& cityCenters,
                                     const vector<int>& actionOrder) {
   // Create tileState map from raw tile map
@@ -440,7 +421,7 @@ BacktrackState findBestMarketLayout(vector<vector<int>>& map,
   }
 
   vector<vector<TileState>> bestLayoutReturn = tileMap;
-  vector<vector<TileState>> bestLayoutCurrent = tileMap;
+  vector<vector<vector<TileState>>> tempLayouts(2 * cityCenters.size(), tileMap);
   vector<int> buildingLevelsCurrent(cityCenters.size(), 0);
 
   BacktrackState state{
@@ -451,13 +432,13 @@ BacktrackState findBestMarketLayout(vector<vector<int>>& map,
     curBuildingsInCity,
     curMarketsInCity,
     bestLayoutReturn,
-    bestLayoutCurrent,
+    tempLayouts,
     buildingLevelsCurrent,
   };
 
   // int bestMarketTotal = 
-  backtrackPlacements(state, 0, true);
-  return state;
+  int bestMarketTotal = backtrackPlacements(state, 0, true);
+  return BacktrackResult{bestMarketTotal, state.bestLayoutReturn};
 }
 
 
@@ -527,13 +508,13 @@ extern "C" {
         }
 
 
-        BacktrackState state = findBestMarketLayout(map, cityCenters, actionOrder);
+        BacktrackResult result = findBestMarketLayout(map, cityCenters, actionOrder);
 
         // Allocate memory for the result layout and return it
         int* resultLayout = new int[rows * cols];
         for (int i = 0; i < rows; i++) {
             for (int j = 0; j < cols; j++) {
-                resultLayout[i * cols + j] = state.bestLayoutReturn[i][j].type;
+                resultLayout[i * cols + j] = result.bestLayout[i][j].type;
             }
         }
         return resultLayout;
