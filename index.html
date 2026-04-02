@@ -1,393 +1,171 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Grid Editor</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #f0f0f0;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 16px;
-    }
-    #outer { display: flex; flex-direction: column; gap: 12px; width: 100%; }
-    #top-row { display: flex; flex-direction: row; align-items: stretch; gap: 12px; width: 100%; }
-
-    #root {
-      flex: 1; min-width: 0;
-      background: white; border: 1px solid #ccc;
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      grid-template-columns: auto 1fr auto;
-    }
-    .corner { width: 48px; height: 48px; }
-    .h-bar { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 0; }
-    .h-bar.top { grid-row: 1; grid-column: 2; }
-    .h-bar.bot { grid-row: 3; grid-column: 2; }
-    .v-bar { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; }
-    .v-bar.left  { grid-row: 2; grid-column: 1; }
-    .v-bar.right { grid-row: 2; grid-column: 3; }
-    #grid-wrapper { grid-row: 2; grid-column: 2; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 8px; position: relative; }
-    #grid-container { display: grid; position: relative; }
-    #border-svg { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; z-index: 100;}
-
-    .btn {
-      width: 32px; height: 32px; background: #4285f4; color: white;
-      border: none; border-radius: 4px; font-size: 18px; font-weight: 500;
-      cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    }
-    .btn:hover { background: #3071e8; }
-    .btn:active { transform: scale(0.95); }
-
-    .cell { position: relative; border: 0.5px solid #bbb; overflow: hidden; cursor: pointer; flex-shrink: 0; background: transparent; }
-    /* Front overlay (like flash) so highlight sits above tile art, not behind it */
-    .cell::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 10;
-      opacity: 0;
-      transition: opacity 0.12s ease, background 0.12s ease;
-      background: rgba(66, 133, 244, 0.32);
-    }
-    .cell:hover::after {
-      opacity: 1;
-    }
-    .cell:hover .cell-bg,
-    .cell:hover .cell-overlay {
-      opacity: 0.35;
-    }
-    .cell.no-upgrade { cursor: not-allowed; }
-    .cell.no-upgrade:hover::after {
-      background: rgba(229, 57, 53, 0.38);
-    }
-    .cell.flashing { background-color: transparent; }
-    .cell.flashing::after {
-      background: rgba(229, 57, 53, 0.45);
-      opacity: 1;
-      z-index: 20;
-    }
-    .cell.flashing .cell-bg, .cell.flashing .cell-overlay { opacity: 0.35; }
-    /* WASM: purple above tile art; 4 on/off blinks in 2s; grid stays under #border-svg */
-    @keyframes wasmPurpleBlinkOverlay {
-      0%, 12.49% { opacity: 1; }
-      12.5%, 24.99% { opacity: 0; }
-      25%, 37.49% { opacity: 1; }
-      37.5%, 49.99% { opacity: 0; }
-      50%, 62.49% { opacity: 1; }
-      62.5%, 74.99% { opacity: 0; }
-      75%, 87.49% { opacity: 1; }
-      87.5%, 100% { opacity: 0; }
-    }
-    @keyframes wasmPurpleBlinkTiles {
-      0%, 12.49% { opacity: 0.38; }
-      12.5%, 24.99% { opacity: 1; }
-      25%, 37.49% { opacity: 0.38; }
-      37.5%, 49.99% { opacity: 1; }
-      50%, 62.49% { opacity: 0.38; }
-      62.5%, 74.99% { opacity: 1; }
-      75%, 87.49% { opacity: 0.38; }
-      87.5%, 100% { opacity: 1; }
-    }
-    .cell.wasm-purple-flash::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 35;
-      background: rgba(106, 27, 154, 0.55);
-      opacity: 0;
-      animation: wasmPurpleBlinkOverlay 2s linear forwards;
-    }
-    .cell.wasm-purple-flash .cell-bg,
-    .cell.wasm-purple-flash .cell-overlay {
-      animation: wasmPurpleBlinkTiles 2s linear forwards;
-    }
-    .cell .cell-bg, .cell .cell-overlay {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; display: block;
-    }
-    .cell .cell-bg { z-index: 1; }
-    .cell .cell-overlay { z-index: 2; }
-
-    #sidebar {
-      flex-shrink: 0; background: white; border: 1px solid #ccc;
-      display: flex; flex-direction: column; align-items: stretch;
-      padding: 8px; gap: 6px; overflow-y: auto;
-    }
-    .sidebar-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
-    #selected-row { display: flex; justify-content: center; padding-bottom: 6px; border-bottom: 1px solid #ddd; margin-bottom: 2px; }
-    #selected-box { width: 72px; height: 72px; border: 3px solid #4285f4; border-radius: 6px; overflow: hidden; flex-shrink: 0; position: relative; background: #eee; }
-    #tile-cols { display: flex; flex-direction: row; gap: 4px; align-items: flex-start; }
-    .tile-col { display: flex; flex-direction: column; gap: 4px; }
-    .sidebar-item { width: 60px; height: 60px; border: 2px solid transparent; border-radius: 4px; cursor: pointer; overflow: hidden; flex-shrink: 0; position: relative; background: #eee; }
-    .sidebar-item:hover { border-color: #aaa; }
-    .sidebar-item.active { border-color: #4285f4; }
-
-    /* Upgrade tool special styling */
-    .sidebar-item.upgrade-tool { background: #e8f4fd; }
-    .sidebar-item.upgrade-tool.active { border-color: #29b6f6; background: #b3e5fc; }
-    .sidebar-item.upgrade-tool img { width: 100%; height: 100%; object-fit: contain; }
-
-    .si-bg, .si-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
-    .si-bg { z-index: 1; }
-    .si-overlay { z-index: 2; }
-
-    #bottom-bar { background: white; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; width: 100%; padding: 8px 12px; }
-    #calc-btn { padding: 0 32px; height: 44px; background: #4285f4; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer; letter-spacing: 0.02em; }
-    #calc-btn:hover { background: #3071e8; }
-    #calc-btn:active { transform: scale(0.98); }
-
-    #undo-clear-section {
-      padding-top: 6px; border-top: 1px solid #ddd; margin-top: 2px;
-      display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%;
-    }
-    .undo-clear-row {
-      display: flex; flex-direction: row; align-items: flex-end; justify-content: center; gap: 12px;
-    }
-    .undo-clear-col {
-      display: flex; flex-direction: column; align-items: center; gap: 6px;
-    }
-    .sidebar-square-btn {
-      width: 72px; height: 72px; border-radius: 6px; border-width: 3px; border-style: solid;
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
-      transition: background 0.15s, transform 0.1s;
-      box-sizing: border-box; padding: 0; flex-shrink: 0;
-    }
-    .sidebar-square-btn:active { transform: scale(0.95); }
-    .sidebar-square-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-    #undo-btn {
-      border-color: #4285f4; background: #e8f4fd;
-      font-size: 13px; font-weight: 600; color: #1a237e; letter-spacing: 0.02em;
-    }
-    #undo-btn:not(:disabled):hover { background: #d2e7fc; }
-    #clear-btn {
-      border-color: #e53935; background: #fff0f0;
-    }
-    #clear-btn:hover { background: #ffcdd2; }
-    #clear-btn svg { width: 48px; height: 48px; }
-
-    #debug-panel {
-      background: #1e1e1e; color: #d4d4d4; border: 1px solid #444;
-      border-radius: 6px; padding: 12px; font-family: 'Courier New', monospace; font-size: 12px;
-      width: 100%; overflow-x: auto;
-    }
-    .debug-title {
-      color: #569cd6; font-weight: bold; font-size: 13px; margin-bottom: 10px;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .debug-title::before { content: '▶'; font-size: 10px; color: #4ec9b0; }
-    .debug-block { margin-bottom: 14px; }
-    .debug-block:last-child { margin-bottom: 0; }
-    .debug-label { color: #4ec9b0; font-size: 11px; margin-bottom: 4px; font-weight: bold; }
-    .debug-grid-row { display: flex; gap: 4px; margin: 2px 0; }
-    .debug-grid-cell {
-      padding: 2px 6px; border-radius: 3px; font-size: 11px; min-width: 72px; text-align: center;
-      background: #2d2d2d; color: #9cdcfe; border: 1px solid #3c3c3c;
-    }
-    .debug-grid-cell.city-small { background: #1a3a5c; color: #79c0ff; border-color: #4285f4; }
-    .debug-grid-cell.city-big   { background: #3a1a5c; color: #d2a8ff; border-color: #9b59b6; }
-    .debug-inline { color: #ce9178; }
-    .debug-num    { color: #b5cea8; }
-    .debug-key    { color: #9cdcfe; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grid Editor</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f0f0f0;display:flex;align-items:flex-start;justify-content:center;min-height:100vh;padding:16px}
+#outer{display:flex;flex-direction:column;gap:12px;width:100%}
+#top-row{display:flex;flex-direction:row;align-items:stretch;gap:12px;width:100%}
+#root{flex:1;min-width:0;background:#fff;border:1px solid #ccc;display:grid;grid-template-rows:auto 1fr auto;grid-template-columns:auto 1fr auto}
+.corner{width:48px;height:48px}
+.h-bar{display:flex;align-items:center;justify-content:center;gap:4px;padding:8px 0}
+.h-bar.top{grid-row:1;grid-column:2}
+.h-bar.bot{grid-row:3;grid-column:2}
+.v-bar{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0 8px}
+.v-bar.left{grid-row:2;grid-column:1}
+.v-bar.right{grid-row:2;grid-column:3}
+#grid-wrapper{grid-row:2;grid-column:2;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:8px;position:relative}
+#grid-container{display:grid;position:relative}
+#border-svg{position:absolute;top:0;left:0;pointer-events:none;overflow:visible;z-index:100}
+.btn{width:32px;height:32px;background:#4285f4;color:#fff;border:none;border-radius:4px;font-size:18px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.btn:hover{background:#3071e8}
+.btn:active{transform:scale(.95)}
+.cell{position:relative;border:.5px solid #bbb;overflow:hidden;cursor:pointer;flex-shrink:0;background:transparent}
+.cell::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:10;opacity:0;transition:opacity .12s ease,background .12s ease;background:rgba(66,133,244,.32)}
+.cell:hover::after{opacity:1}
+.cell:hover .cell-bg,.cell:hover .cell-overlay{opacity:.35}
+.cell.no-upgrade{cursor:not-allowed}
+.cell.no-upgrade:hover::after{background:rgba(229,57,53,.38)}
+.cell.flashing{background-color:transparent}
+.cell.flashing::after{background:rgba(229,57,53,.45);opacity:1;z-index:20}
+.cell.flashing .cell-bg,.cell.flashing .cell-overlay{opacity:.35}
+@keyframes wasmPO{0%,12.49%{opacity:1}12.5%,24.99%{opacity:0}25%,37.49%{opacity:1}37.5%,49.99%{opacity:0}50%,62.49%{opacity:1}62.5%,74.99%{opacity:0}75%,87.49%{opacity:1}87.5%,100%{opacity:0}}
+@keyframes wasmPT{0%,12.49%{opacity:.38}12.5%,24.99%{opacity:1}25%,37.49%{opacity:.38}37.5%,49.99%{opacity:1}50%,62.49%{opacity:.38}62.5%,74.99%{opacity:1}75%,87.49%{opacity:.38}87.5%,100%{opacity:1}}
+.cell.wasm-purple-flash::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:35;background:rgba(106,27,154,.55);opacity:0;animation:wasmPO 2s linear forwards}
+.cell.wasm-purple-flash .cell-bg,.cell.wasm-purple-flash .cell-overlay{animation:wasmPT 2s linear forwards}
+.cell .cell-bg,.cell .cell-overlay{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;display:block}
+.cell .cell-bg{z-index:1}
+.cell .cell-overlay{z-index:2}
+#sidebar{flex-shrink:0;background:#fff;border:1px solid #ccc;display:flex;flex-direction:column;align-items:stretch;padding:8px;gap:6px;overflow-y:auto}
+.sidebar-label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em}
+#selected-row{display:flex;justify-content:center;padding-bottom:6px;border-bottom:1px solid #ddd;margin-bottom:2px}
+#selected-box{width:72px;height:72px;border:3px solid #4285f4;border-radius:6px;overflow:hidden;flex-shrink:0;position:relative;background:#eee}
+#tile-cols{display:flex;flex-direction:row;gap:4px;align-items:flex-start}
+.tile-col{display:flex;flex-direction:column;gap:4px}
+.sidebar-item{width:60px;height:60px;border:2px solid transparent;border-radius:4px;cursor:pointer;overflow:hidden;flex-shrink:0;position:relative;background:#eee}
+.sidebar-item:hover{border-color:#aaa}
+.sidebar-item.active{border-color:#4285f4}
+.sidebar-item.upgrade-tool{background:#e8f4fd}
+.sidebar-item.upgrade-tool.active{border-color:#29b6f6;background:#b3e5fc}
+.sidebar-item.upgrade-tool img{width:100%;height:100%;object-fit:contain}
+.si-bg,.si-overlay{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;display:block}
+.si-bg{z-index:1}
+.si-overlay{z-index:2}
+#bottom-bar{background:#fff;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;width:100%;padding:8px 12px}
+#calc-btn{padding:0 32px;height:44px;background:#4285f4;color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:500;cursor:pointer;letter-spacing:.02em}
+#calc-btn:hover{background:#3071e8}
+#calc-btn:active{transform:scale(.98)}
+#undo-clear-section{padding-top:6px;border-top:1px solid #ddd;margin-top:2px;display:flex;flex-direction:column;align-items:center;gap:6px;width:100%}
+.undo-clear-row{display:flex;flex-direction:row;align-items:flex-end;justify-content:center;gap:12px}
+.undo-clear-col{display:flex;flex-direction:column;align-items:center;gap:6px}
+.sidebar-square-btn{width:72px;height:72px;border-radius:6px;border-width:3px;border-style:solid;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,transform .1s;box-sizing:border-box;padding:0;flex-shrink:0}
+.sidebar-square-btn:active{transform:scale(.95)}
+.sidebar-square-btn:disabled{opacity:.45;cursor:not-allowed}
+#undo-btn{border-color:#4285f4;background:#e8f4fd;font-size:13px;font-weight:600;color:#1a237e;letter-spacing:.02em}
+#undo-btn:not(:disabled):hover{background:#d2e7fc}
+#clear-btn{border-color:#e53935;background:#fff0f0}
+#clear-btn:hover{background:#ffcdd2}
+#clear-btn svg{width:48px;height:48px}
+#debug-panel{background:#1e1e1e;color:#d4d4d4;border:1px solid #444;border-radius:6px;padding:12px;font-family:'Courier New',monospace;font-size:12px;width:100%;overflow-x:auto}
+.debug-title{color:#569cd6;font-weight:bold;font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.debug-title::before{content:'▶';font-size:10px;color:#4ec9b0}
+.debug-block{margin-bottom:14px}
+.debug-block:last-child{margin-bottom:0}
+.debug-label{color:#4ec9b0;font-size:11px;margin-bottom:4px;font-weight:bold}
+.debug-grid-row{display:flex;gap:4px;margin:2px 0}
+.debug-grid-cell{padding:2px 6px;border-radius:3px;font-size:11px;min-width:72px;text-align:center;background:#2d2d2d;color:#9cdcfe;border:1px solid #3c3c3c}
+.debug-grid-cell.city-small{background:#1a3a5c;color:#79c0ff;border-color:#4285f4}
+.debug-grid-cell.city-big{background:#3a1a5c;color:#d2a8ff;border-color:#9b59b6}
+.debug-inline{color:#ce9178}
+.debug-num{color:#b5cea8}
+.debug-key{color:#9cdcfe}
+</style>
 </head>
 <body>
 <div id="outer">
-  <div id="top-row">
-    <div id="root">
-      <div class="corner" style="grid-row:1;grid-column:1;"></div>
-      <div class="h-bar top">
-        <button class="btn" id="top-plus">+</button>
-      </div>
-      <div class="corner" style="grid-row:1;grid-column:3;"></div>
-      <div class="v-bar left">
-        <button class="btn" id="left-plus">+</button>
-      </div>
-      <div id="grid-wrapper"><div id="grid-container"></div><svg id="border-svg"></svg></div>
-      <div class="v-bar right">
-        <button class="btn" id="right-plus">+</button>
-      </div>
-      <div class="corner" style="grid-row:3;grid-column:1;"></div>
-      <div class="h-bar bot">
-        <button class="btn" id="bot-plus">+</button>
-      </div>
-      <div class="corner" style="grid-row:3;grid-column:3;"></div>
-    </div>
-
-    <div id="sidebar">
-      <div class="sidebar-label" style="text-align:center;">Selected</div>
-      <div id="selected-row"><div id="selected-box"></div></div>
-      <div class="sidebar-label">Tiles</div>
-      <div id="tile-cols"></div>
-      <div id="undo-clear-section">
-        <div class="undo-clear-row">
-          <div class="undo-clear-col">
-            <div class="sidebar-label">History</div>
-            <button type="button" id="undo-btn" class="sidebar-square-btn" disabled title="Undo last change (painting, grid size, Calculate, …). No redo.">Undo</button>
-          </div>
-          <div class="undo-clear-col">
-            <div class="sidebar-label">Clear</div>
-            <button type="button" id="clear-btn" class="sidebar-square-btn" title="Clear all tiles">
-              <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="24" cy="24" r="20" stroke="#e53935" stroke-width="4"/>
-                <line x1="10" y1="38" x2="38" y2="10" stroke="#e53935" stroke-width="4" stroke-linecap="round"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="bottom-bar">
-    <button type="button" id="calc-btn">Calculate</button>
-  </div>
-
-  <div id="debug-panel">
-    <div class="debug-title">Debug</div>
-    <div class="debug-block">
-      <div class="debug-label">cityCenters</div>
-      <div id="dbg-city-centers"></div>
-    </div>
-    <div class="debug-block">
-      <div class="debug-label">actionOrder</div>
-      <div id="dbg-action-order"></div>
-    </div>
-    <div class="debug-block">
-      <div class="debug-label">tilesOwnedByCity</div>
-      <div id="dbg-tiles-owned"></div>
-    </div>
-    <div class="debug-block">
-      <div class="debug-label">grid</div>
-      <div id="dbg-grid"></div>
-    </div>
-  </div>
+<div id="top-row">
+<div id="root">
+<div class="corner" style="grid-row:1;grid-column:1"></div>
+<div class="h-bar top"><button class="btn" id="top-plus">+</button></div>
+<div class="corner" style="grid-row:1;grid-column:3"></div>
+<div class="v-bar left"><button class="btn" id="left-plus">+</button></div>
+<div id="grid-wrapper"><div id="grid-container"></div><svg id="border-svg"></svg></div>
+<div class="v-bar right"><button class="btn" id="right-plus">+</button></div>
+<div class="corner" style="grid-row:3;grid-column:1"></div>
+<div class="h-bar bot"><button class="btn" id="bot-plus">+</button></div>
+<div class="corner" style="grid-row:3;grid-column:3"></div>
 </div>
-
+<div id="sidebar">
+<div class="sidebar-label" style="text-align:center">Selected</div>
+<div id="selected-row"><div id="selected-box"></div></div>
+<div class="sidebar-label">Tiles</div>
+<div id="tile-cols"></div>
+<div id="undo-clear-section">
+<div class="undo-clear-row">
+<div class="undo-clear-col"><div class="sidebar-label">History</div>
+<button type="button" id="undo-btn" class="sidebar-square-btn" disabled title="Undo last change (painting, grid size, Calculate, …). No redo.">Undo</button></div>
+<div class="undo-clear-col"><div class="sidebar-label">Clear</div>
+<button type="button" id="clear-btn" class="sidebar-square-btn" title="Clear all tiles">
+<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="20" stroke="#e53935" stroke-width="4"/><line x1="10" y1="38" x2="38" y2="10" stroke="#e53935" stroke-width="4" stroke-linecap="round"/></svg>
+</button></div></div></div>
+</div></div>
+<div id="bottom-bar"><button type="button" id="calc-btn">Calculate</button></div>
+<div id="debug-panel">
+<div class="debug-title">Debug</div>
+<div class="debug-block"><div class="debug-label">cityCenters</div><div id="dbg-city-centers"></div></div>
+<div class="debug-block"><div class="debug-label">actionOrder</div><div id="dbg-action-order"></div></div>
+<div class="debug-block"><div class="debug-label">tilesOwnedByCity</div><div id="dbg-tiles-owned"></div></div>
+<div class="debug-block"><div class="debug-label">grid</div><div id="dbg-grid"></div></div>
+</div>
+</div>
 <script type="module">
-
 import createModule from './marketcalc.js';
+const $ = id => document.getElementById(id);
+let wasmModule, wasmPurpleFlashTimeoutId = null;
+createModule().then(m => { wasmModule = m; }).catch(e => console.error(e));
 
-let wasmModule;
-let wasmPurpleFlashTimeoutId = null;
-
-// Initialize the WebAssembly module
-createModule().then((module) => {
-  wasmModule = module;
-  console.log('WASM Module initialized:', wasmModule);
-}).catch((error) => {
-  console.error('Failed to initialize WASM Module:', error);
-});
-
-const tileBg = {
-  // first 7 correspond to cpp tile types
-  0: "img/field.png",
-  1:  "img/field.png",
-  2:  "img/field.png",
-  3:  "img/field.png",
-  4:  "img/field.png",
-  5:  "img/field.png",
-  6:  "img/field.png",
-  // next three are variations that are only used in frontend
-  7:  "img/water.png", // alternate obstacle (water)
-  8:  "img/field.png", // small city
-  9:  "img/field.png", // big city
-  
-};
+const F = 'img/field.png', W = 'img/water.png';
+const tileBg = { ...Object.fromEntries([0,1,2,3,4,5,6,8,9].map(k => [k, F])), 7: W };
 const tileOverlay = {
-  0: "img/field.png",
-  1:  "img/village.png",
-  2:  "img/mountain.png",
-  3:  "img/crop.png",
-  4:  "img/windmill.png",
-  5:  "img/market.png",
-  6:  "img/farm.png",
-  7:  null,
-  8:  "img/small_city.png",
-  9:  "img/big_city.png",
+  0: F, 1: 'img/village.png', 2: 'img/mountain.png', 3: 'img/crop.png', 4: 'img/windmill.png',
+  5: 'img/market.png', 6: 'img/farm.png', 7: null, 8: 'img/small_city.png', 9: 'img/big_city.png'
 };
-const tileNames = {
-  0:  "field",
-  1:  "village",
-  2:  "mountain",
-  3:  "crop",
-  4:  "windmill",
-  5:  "market",
-  6:  "farm",
-  7:  "water",
-  8:  "small_city",
-  9:  "big_city",
-};
-
-// Upgrade chain: village(1) -> small_city(8) -> big_city(9) -> max
+const tileNames = { 0:'field',1:'village',2:'mountain',3:'crop',4:'windmill',5:'market',6:'farm',7:'water',8:'small_city',9:'big_city' };
 const upgradeChain = { 1: 8, 8: 9 };
-
-// Sidebar columns: 'upgrade' is the special tool token
 const sidebarCols = [[0, 7, 2], [3, 6, 4], [1, 'upgrade', 5]];
+const CITY_COLORS = ['#000000', '#1a237e', '#b71c1c', '#1b5e20', '#e65100', '#4a148c', '#006064', '#3e2723'];
+const cityTiles = new Set([8, 9]);
 
-// cityCenters[idx] = {r, c} coordinate of the idx-th city created
-// actionOrder = list of city indices in order of upgrade actions
-// tilesOwnedByCity[idx] = list of {r, c} pairs owned by that city
-let cityCenters = [];
-let actionOrder = [];
-let tilesOwnedByCity = {};
-
-let selectedVal = 1; // village
-let cellSize = 100;
-
+let cityCenters = [], actionOrder = [], tilesOwnedByCity = {}, selectedVal = 1, cellSize = 100;
 function newRow(len) { return Array.from({ length: len }, () => 0); }
 let grid = [newRow(3), newRow(3), newRow(3)];
-
-/**
- * LIFO stack of immutable editor snapshots (no redo: restore drops the snapshot permanently).
- * One snapshot is pushed immediately before each user-committed mutation.
- */
 let undoStack = [];
 
 function cloneTilesOwnedByCity(src) {
   const out = {};
-  for (const k of Object.keys(src)) {
-    out[k] = src[k].map(t => ({ r: t.r, c: t.c }));
-  }
+  for (const k of Object.keys(src)) out[k] = src[k].map(t => ({ r: t.r, c: t.c }));
   return out;
 }
-
 function snapshotEditorState() {
   return {
     grid: grid.map(row => row.slice()),
     cityCenters: cityCenters.map(cc => ({ r: cc.r, c: cc.c })),
     actionOrder: actionOrder.slice(),
-    tilesOwnedByCity: cloneTilesOwnedByCity(tilesOwnedByCity),
+    tilesOwnedByCity: cloneTilesOwnedByCity(tilesOwnedByCity)
   };
 }
-
 function restoreEditorState(s) {
   grid = s.grid.map(row => row.slice());
   cityCenters = s.cityCenters.map(cc => ({ r: cc.r, c: cc.c }));
   actionOrder = s.actionOrder.slice();
   tilesOwnedByCity = cloneTilesOwnedByCity(s.tilesOwnedByCity);
 }
-
-function pushUndoSnapshot() {
-  undoStack.push(snapshotEditorState());
-  updateUndoButton();
-}
-
-function updateUndoButton() {
-  const btn = document.getElementById('undo-btn');
-  if (btn) btn.disabled = undoStack.length === 0;
-}
-
-function resetUndoHistory() {
-  undoStack.length = 0;
-  updateUndoButton();
-}
-
+function pushUndoSnapshot() { undoStack.push(snapshotEditorState()); updateUndoButton(); }
+function updateUndoButton() { const b = $('undo-btn'); if (b) b.disabled = undoStack.length === 0; }
+function resetUndoHistory() { undoStack.length = 0; updateUndoButton(); }
 function undoOnce() {
   if (undoStack.length === 0) return;
   restoreEditorState(undoStack.pop());
@@ -395,31 +173,25 @@ function undoOnce() {
   renderDebug();
   render();
 }
-
 function isUpgradeTool() { return selectedVal === 'upgrade'; }
-
 function tileInnerHTML(val) {
-  if (val === 'upgrade') {
-    return `<img src="img/upgrade.png" alt="upgrade" style="width:100%;height:100%;object-fit:contain;">`;
-  }
-  const bg  = tileBg[val]      ? `<img class="si-bg"      src="${tileBg[val]}"      alt="">` : '';
-  const ov  = tileOverlay[val] ? `<img class="si-overlay" src="${tileOverlay[val]}" alt="">` : '';
-  return bg + ov;
+  if (val === 'upgrade') return '<img src="img/upgrade.png" alt="" style="width:100%;height:100%;object-fit:contain">';
+  return (tileBg[val] ? `<img class="si-bg" src="${tileBg[val]}" alt="">` : '') +
+    (tileOverlay[val] ? `<img class="si-overlay" src="${tileOverlay[val]}" alt="">` : '');
 }
-
 function buildSidebar() {
-  const tileCols = document.getElementById('tile-cols');
+  const tileCols = $('tile-cols');
   tileCols.innerHTML = '';
   sidebarCols.forEach(col => {
     const colEl = document.createElement('div');
     colEl.className = 'tile-col';
     col.forEach(val => {
       const item = document.createElement('div');
-      const isUpgrade = val === 'upgrade';
-      item.className = 'sidebar-item' + (isUpgrade ? ' upgrade-tool' : '') + (val === selectedVal ? ' active' : '');
+      const isUp = val === 'upgrade';
+      item.className = 'sidebar-item' + (isUp ? ' upgrade-tool' : '') + (val === selectedVal ? ' active' : '');
       item.dataset.val = val;
       item.innerHTML = tileInnerHTML(val);
-      item.title = isUpgrade ? 'Upgrade: village → small city → big city' : (tileNames[val] || '');
+      item.title = isUp ? 'Upgrade: village → small city → big city' : (tileNames[val] || '');
       item.addEventListener('click', () => selectTile(val));
       colEl.appendChild(item);
     });
@@ -427,35 +199,18 @@ function buildSidebar() {
   });
   updateSelectedBox();
 }
-
 function selectTile(val) {
   selectedVal = val;
-  document.querySelectorAll('.sidebar-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.val == selectedVal);
-  });
+  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.val == selectedVal));
   updateSelectedBox();
 }
-
-function updateSelectedBox() {
-  document.getElementById('selected-box').innerHTML = tileInnerHTML(selectedVal);
-}
-
-const cityTiles = new Set([8, 9]); // small_city, big_city
-
-// Find idx for an existing city at (r,c), or -1 if not found
-function cityIdxAt(r, c) {
-  return cityCenters.findIndex(cc => cc.r === r && cc.c === c);
-}
-
-// Returns a Set of "r,c" strings for all tiles currently owned by any city
+function updateSelectedBox() { $('selected-box').innerHTML = tileInnerHTML(selectedVal); }
+function cityIdxAt(r, c) { return cityCenters.findIndex(cc => cc.r === r && cc.c === c); }
 function allOwnedSet() {
   const s = new Set();
   Object.values(tilesOwnedByCity).forEach(tiles => tiles.forEach(t => s.add(`${t.r},${t.c}`)));
   return s;
 }
-
-// Claim tiles in a square of half-size `half` around (cr,cc) for city `idx`,
-// skipping tiles already owned by any city. No bounds clamping — cities may own off-grid tiles.
 function claimTiles(idx, cr, cc, half) {
   const owned = allOwnedSet();
   if (!tilesOwnedByCity[idx]) tilesOwnedByCity[idx] = [];
@@ -468,18 +223,12 @@ function claimTiles(idx, cr, cc, half) {
     }
   }
 }
-
-// Flash a cell red to signal a disallowed action
 function disallowedAction(r, c) {
-  const cols = grid[0].length;
-  const idx = r * cols + c;
-  const cell = document.getElementById('grid-container').children[idx];
+  const cols = grid[0].length, idx = r * cols + c, cell = $('grid-container').children[idx];
   if (!cell) return;
   cell.classList.add('flashing');
   setTimeout(() => cell.classList.remove('flashing'), 350);
 }
-
-// Returns true if placing a village at (r,c) is too close to any existing village or city
 function villageConflict(r, c) {
   const rows = grid.length, cols = grid[0].length;
   for (let dr = -2; dr <= 2; dr++) {
@@ -488,190 +237,97 @@ function villageConflict(r, c) {
       const nr = r + dr, nc = c + dc;
       if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
       const v = grid[nr][nc];
-      if (v === 1 || v === 8 || v === 9) return true; // village, small_city, big_city
+      if (v === 1 || v === 8 || v === 9) return true;
     }
   }
   return false;
 }
-
-// Returns true if the city owning (r,c) already has a tile of tileVal
 function cityAlreadyHas(r, c, tileVal) {
-  // Find which city owns this tile
-  const ownerIdx = Object.entries(tilesOwnedByCity).find(([, tiles]) =>
-    tiles.some(t => t.r === r && t.c === c)
-  )?.[0];
+  const ownerIdx = Object.entries(tilesOwnedByCity).find(([, tiles]) => tiles.some(t => t.r === r && t.c === c))?.[0];
   if (ownerIdx === undefined) return false;
-  const owned = tilesOwnedByCity[ownerIdx];
-  return owned.some(t => {
+  return tilesOwnedByCity[ownerIdx].some(t => {
     const gr = grid[t.r], gv = gr && gr[t.c];
     return gv === tileVal;
   });
 }
-
 function handleCellClick(r, c) {
   if (isUpgradeTool()) {
-    const cur = grid[r][c];
-    const next = upgradeChain[cur];
-    if (next === undefined) {
-      // big_city or non-village/city: disallowed
-      disallowedAction(r, c);
-      return;
-    }
-
+    const cur = grid[r][c], next = upgradeChain[cur];
+    if (next === undefined) { disallowedAction(r, c); return; }
     pushUndoSnapshot();
     grid[r][c] = next;
-
     if (cur === 1) {
-      // village -> small_city: register new city, claim 3x3 (half=1)
       const idx = cityCenters.length;
       cityCenters.push({ r, c });
       actionOrder.push(idx);
       claimTiles(idx, r, c, 1);
     } else if (cur === 8) {
-      // small_city -> big_city: claim the 16 extra tiles in 5x5 (half=2), skip already owned
       const idx = cityIdxAt(r, c);
-      if (idx !== -1) {
-        actionOrder.push(idx);
-        claimTiles(idx, r, c, 2);
-      }
+      if (idx !== -1) { actionOrder.push(idx); claimTiles(idx, r, c, 2); }
     }
-
     renderDebug();
     render();
   } else {
-    // Prevent overwriting small_city or big_city
-    if (cityTiles.has(grid[r][c])) {
-      disallowedAction(r, c);
-      return;
-    }
-
-    // Village placement: must not be within 5x5 of any other village or city
-    if (selectedVal === 1 && villageConflict(r, c)) {
-      disallowedAction(r, c);
-      return;
-    }
-
-    // Market (5): city may only have 1
-    if (selectedVal === 5 && cityAlreadyHas(r, c, 5)) {
-      disallowedAction(r, c);
-      return;
-    }
-
-    // Windmill (4): city may only have 1
-    if (selectedVal === 4 && cityAlreadyHas(r, c, 4)) {
-      disallowedAction(r, c);
-      return;
-    }
-
+    if (cityTiles.has(grid[r][c])) { disallowedAction(r, c); return; }
+    if (selectedVal === 1 && villageConflict(r, c)) { disallowedAction(r, c); return; }
+    if (selectedVal === 5 && cityAlreadyHas(r, c, 5)) { disallowedAction(r, c); return; }
+    if (selectedVal === 4 && cityAlreadyHas(r, c, 4)) { disallowedAction(r, c); return; }
     pushUndoSnapshot();
     grid[r][c] = selectedVal;
     renderDebug();
     render();
   }
 }
-
-function canUpgrade(val) {
-  return upgradeChain[val] !== undefined;
-}
-
+function canUpgrade(val) { return upgradeChain[val] !== undefined; }
 function render() {
   clearWasmPurpleFlash();
-  const container = document.getElementById('grid-container');
-  const wrapper   = document.getElementById('grid-wrapper');
-  const rows = grid.length;
-  const cols = grid[0].length;
-  const maxW = wrapper.clientWidth  - 16;
-  const maxH = Math.max(wrapper.clientHeight - 16, 100);
+  const container = $('grid-container'), wrapper = $('grid-wrapper');
+  const rows = grid.length, cols = grid[0].length;
+  const maxW = wrapper.clientWidth - 16, maxH = Math.max(wrapper.clientHeight - 16, 100);
   cellSize = Math.min(Math.floor(maxW / cols), Math.floor(maxH / rows), 140);
-
   container.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
-  container.style.gridTemplateRows    = `repeat(${rows}, ${cellSize}px)`;
+  container.style.gridTemplateRows = `repeat(${rows}, ${cellSize}px)`;
   container.innerHTML = '';
-
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const val  = grid[r][c];
-      const cell = document.createElement('div');
+      const val = grid[r][c], cell = document.createElement('div');
       cell.className = 'cell';
-      cell.style.width  = cellSize + 'px';
-      cell.style.height = cellSize + 'px';
-
-      // Show no-upgrade cursor when: upgrade tool + can't upgrade, OR paint tool + city tile
-      if ((isUpgradeTool() && !canUpgrade(val)) || (!isUpgradeTool() && cityTiles.has(val))) {
-        cell.classList.add('no-upgrade');
-      }
-
-      if (tileBg[val]) {
-        const bg = document.createElement('img');
-        bg.className = 'cell-bg';
-        bg.src = tileBg[val];
-        cell.appendChild(bg);
-      }
-      if (tileOverlay[val]) {
-        const ov = document.createElement('img');
-        ov.className = 'cell-overlay';
-        ov.src = tileOverlay[val];
-        cell.appendChild(ov);
-      }
+      cell.style.width = cell.style.height = cellSize + 'px';
+      if ((isUpgradeTool() && !canUpgrade(val)) || (!isUpgradeTool() && cityTiles.has(val))) cell.classList.add('no-upgrade');
+      if (tileBg[val]) { const bg = document.createElement('img'); bg.className = 'cell-bg'; bg.src = tileBg[val]; cell.appendChild(bg); }
+      if (tileOverlay[val]) { const ov = document.createElement('img'); ov.className = 'cell-overlay'; ov.src = tileOverlay[val]; cell.appendChild(ov); }
       cell.addEventListener('click', () => handleCellClick(r, c));
       container.appendChild(cell);
     }
   }
-
-  const bb = document.getElementById('bottom-bar');
-  bb.style.minHeight = (cellSize + 24) + 'px';
-  bb.style.height = (cellSize + 24) + 'px';
+  const bb = $('bottom-bar');
+  bb.style.minHeight = bb.style.height = (cellSize + 24) + 'px';
   renderBorders();
 }
-
-// Distinct colors per city for border strokes
-const CITY_COLORS = ['#000000', '#1a237e', '#b71c1c', '#1b5e20', '#e65100', '#4a148c', '#006064', '#3e2723'];
-
 function renderBorders() {
-  const svg = document.getElementById('border-svg');
-  const container = document.getElementById('grid-container');
-  const wrapper = document.getElementById('grid-wrapper');
-  const rows = grid.length, cols = grid[0].length;
-  const W = cols * cellSize, H = rows * cellSize;
-
-  // Position SVG to exactly overlap the grid-container
-  const cRect = container.getBoundingClientRect();
-  const wRect = wrapper.getBoundingClientRect();
+  const svg = $('border-svg'), container = $('grid-container'), wrapper = $('grid-wrapper');
+  const rows = grid.length, cols = grid[0].length, W = cols * cellSize, H = rows * cellSize;
+  const cRect = container.getBoundingClientRect(), wRect = wrapper.getBoundingClientRect();
   svg.style.left = (cRect.left - wRect.left) + 'px';
-  svg.style.top  = (cRect.top  - wRect.top)  + 'px';
-
+  svg.style.top = (cRect.top - wRect.top) + 'px';
   svg.setAttribute('width', W);
   svg.setAttribute('height', H);
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.innerHTML = '';
-
   const stroke = Math.max(3, Math.round(cellSize * 0.1));
-
   Object.entries(tilesOwnedByCity).forEach(([idxStr, tiles]) => {
-    const idx = parseInt(idxStr);
-    // Only consider tiles that are currently within grid bounds
+    const idx = parseInt(idxStr, 10);
     const inBounds = tiles.filter(t => t.r >= 0 && t.r < rows && t.c >= 0 && t.c < cols);
     if (inBounds.length === 0) return;
-    // owned set includes ALL tiles (including off-grid) so borders at the grid edge
-    // correctly show as boundary when the neighbor is off-grid but owned
-    const owned = new Set(tiles.map(t => `${t.r},${t.c}`));
-    const color = CITY_COLORS[idx % CITY_COLORS.length];
-
-    // For each owned tile, check each of its 4 edges.
-    // If the neighbor is NOT owned by this city, draw that edge as a border segment.
+    const owned = new Set(tiles.map(t => `${t.r},${t.c}`)), color = CITY_COLORS[idx % CITY_COLORS.length];
     const segments = [];
     inBounds.forEach(({ r, c }) => {
       const x = c * cellSize, y = r * cellSize;
-      // top edge: neighbor is (r-1, c)
       if (!owned.has(`${r - 1},${c}`)) segments.push([x, y, x + cellSize, y]);
-      // bottom edge: neighbor is (r+1, c)
       if (!owned.has(`${r + 1},${c}`)) segments.push([x, y + cellSize, x + cellSize, y + cellSize]);
-      // left edge: neighbor is (r, c-1)
       if (!owned.has(`${r},${c - 1}`)) segments.push([x, y, x, y + cellSize]);
-      // right edge: neighbor is (r, c+1)
       if (!owned.has(`${r},${c + 1}`)) segments.push([x + cellSize, y, x + cellSize, y + cellSize]);
     });
-
     segments.forEach(([x1, y1, x2, y2]) => {
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       line.setAttribute('x1', x1); line.setAttribute('y1', y1);
@@ -683,267 +339,142 @@ function renderBorders() {
     });
   });
 }
-
-// Shift all cityCenters coords when grid expands in a direction that offsets existing rows/cols
 function shiftCityCenters(dr, dc) {
   cityCenters = cityCenters.map(cc => ({ r: cc.r + dr, c: cc.c + dc }));
   Object.keys(tilesOwnedByCity).forEach(idx => {
     tilesOwnedByCity[idx] = tilesOwnedByCity[idx].map(t => ({ r: t.r + dr, c: t.c + dc }));
   });
 }
-
-/**
- * WASM is assumed never to move or remove an existing windmill (4) or market (5).
- * Reject results that violate that before applying anything to the grid.
- */
 function validateWasmPinnedBuildingsMarkets(resultFlat, rows, cols) {
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const g = grid[r][c];
       if (g !== 4 && g !== 5) continue;
       const rt = resultFlat[r * cols + c];
-      if (rt !== g) {
-        return { r, c, expected: g, got: rt };
-      }
+      if (rt !== g) return { r, c, expected: g, got: rt };
     }
   }
   return null;
 }
-
-function tileTypeName(v) {
-  return tileNames[v] != null ? tileNames[v] : String(v);
-}
-
-/**
- * Cells where WASM suggests a windmill or market and the UI grid does not already match.
- */
-function buildWasmPlacementDiff(resultFlat, rows, cols) {
-  const diff = Array.from({ length: rows }, () => Array(cols).fill(null));
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const rt = resultFlat[r * cols + c];
-      if ((rt === 4 || rt === 5) && grid[r][c] !== rt) {
-        diff[r][c] = rt;
-      }
-    }
-  }
-  return diff;
-}
-
-function wasmDiffHasAnyPlacement(diff) {
-  for (let r = 0; r < diff.length; r++) {
-    for (let c = 0; c < diff[r].length; c++) {
-      if (diff[r][c] === 4 || diff[r][c] === 5) return true;
-    }
-  }
-  return false;
-}
-
-function applyWasmPlacementDiffToGrid(diff, rows, cols) {
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const t = diff[r][c];
-      if (t === 4 || t === 5) grid[r][c] = t;
-    }
-  }
-}
-
+function tileTypeName(v) { return tileNames[v] != null ? tileNames[v] : String(v); }
 function clearWasmPurpleFlash() {
-  if (wasmPurpleFlashTimeoutId !== null) {
-    clearTimeout(wasmPurpleFlashTimeoutId);
-    wasmPurpleFlashTimeoutId = null;
-  }
-  const container = document.getElementById('grid-container');
-  if (container) {
-    container.querySelectorAll('.wasm-purple-flash').forEach((el) => el.classList.remove('wasm-purple-flash'));
-  }
+  if (wasmPurpleFlashTimeoutId !== null) { clearTimeout(wasmPurpleFlashTimeoutId); wasmPurpleFlashTimeoutId = null; }
+  const container = $('grid-container');
+  if (container) container.querySelectorAll('.wasm-purple-flash').forEach(el => el.classList.remove('wasm-purple-flash'));
 }
-
-/** After render: highlight cells that received a new windmill or market from the solver. */
 function scheduleWasmPlacementPurpleFlash(placementDiff, rows, cols) {
   clearWasmPurpleFlash();
   const indices = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const t = placementDiff[r][c];
-      if (t === 4 || t === 5) indices.push(r * cols + c);
-    }
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const t = placementDiff[r][c];
+    if (t === 4 || t === 5) indices.push(r * cols + c);
   }
   if (indices.length === 0) return;
-  const container = document.getElementById('grid-container');
-  for (const idx of indices) {
-    const cell = container.children[idx];
-    if (cell) cell.classList.add('wasm-purple-flash');
-  }
+  const container = $('grid-container');
+  for (const idx of indices) { const cell = container.children[idx]; if (cell) cell.classList.add('wasm-purple-flash'); }
   wasmPurpleFlashTimeoutId = setTimeout(() => {
     wasmPurpleFlashTimeoutId = null;
-    const c = document.getElementById('grid-container');
-    if (c) {
-      c.querySelectorAll('.wasm-purple-flash').forEach((el) => el.classList.remove('wasm-purple-flash'));
-    }
+    const c = $('grid-container');
+    if (c) c.querySelectorAll('.wasm-purple-flash').forEach(el => el.classList.remove('wasm-purple-flash'));
   }, 2000);
 }
 
-document.getElementById('top-plus').onclick  = () => { pushUndoSnapshot(); grid.unshift(newRow(grid[0].length)); shiftCityCenters(1, 0); renderDebug(); render(); };
-document.getElementById('bot-plus').onclick  = () => { pushUndoSnapshot(); grid.push(newRow(grid[0].length)); renderDebug(); render(); };
-document.getElementById('left-plus').onclick = () => { pushUndoSnapshot(); grid.forEach(r => r.unshift(0)); shiftCityCenters(0, 1); renderDebug(); render(); };
-document.getElementById('right-plus').onclick= () => { pushUndoSnapshot(); grid.forEach(r => r.push(0)); renderDebug(); render(); };
+$('top-plus').onclick  = () => { pushUndoSnapshot(); grid.unshift(newRow(grid[0].length)); shiftCityCenters(1, 0); renderDebug(); render(); };
+$('bot-plus').onclick  = () => { pushUndoSnapshot(); grid.push(newRow(grid[0].length)); renderDebug(); render(); };
+$('left-plus').onclick = () => { pushUndoSnapshot(); grid.forEach(r => r.unshift(0)); shiftCityCenters(0, 1); renderDebug(); render(); };
+$('right-plus').onclick= () => { pushUndoSnapshot(); grid.forEach(r => r.push(0)); renderDebug(); render(); };
 
-document.getElementById('calc-btn').onclick = () => {
-  if (!wasmModule) {
-    alert('WASM Module is still loading. Please wait a moment and try again.');
-    return;
-  }
-
-  const rows = grid.length;
-  const cols = grid[0].length;
-  const flatGrid = grid.flat();
-  if (flatGrid.length !== rows * cols) {
-    console.error('Grid flattening error: expected length', rows * cols, 'but got', flatGrid.length);
-    return;
-  }
-
+$('calc-btn').onclick = () => {
+  if (!wasmModule) { alert('WASM Module is still loading. Please wait.'); return; }
+  const rows = grid.length, cols = grid[0].length, flatGrid = grid.flat();
+  if (flatGrid.length !== rows * cols) { console.error('Grid flatten error'); return; }
   const numCities = cityCenters.length;
-  if (numCities === 0) {
-    alert('Add at least one city (use the upgrade tool on a village) before calculating.');
-    return;
-  }
+  if (numCities === 0) { alert('Add at least one city (use the upgrade tool on a village) before calculating.'); return; }
   const numActions = actionOrder.length;
-  if (numActions === 0) {
-    alert('No capture / border-growth order yet. Upgrade a village to small city first.');
-    return;
-  }
-
+  if (numActions === 0) { alert('No capture / border-growth order yet. Upgrade a village to small city first.'); return; }
   for (let i = 0; i < flatGrid.length; i++) {
     if (flatGrid[i] === 7) flatGrid[i] = 2;
     else if (flatGrid[i] === 8) flatGrid[i] = 1;
     else if (flatGrid[i] === 9) flatGrid[i] = 1;
   }
-
   const mapDataPtr = wasmModule._malloc(rows * cols * 4);
-  const mapDataHeap = new Int32Array(wasmModule.HEAP32.buffer, mapDataPtr, rows * cols);
-  mapDataHeap.set(flatGrid);
-
-  const flatCityCenterData = cityCenters.flatMap(cc => [cc.r, cc.c]);
-  const CityCenterData = wasmModule._malloc(flatCityCenterData.length * 4);
-  const CityCenterHeap = new Int32Array(wasmModule.HEAP32.buffer, CityCenterData, flatCityCenterData.length);
-  CityCenterHeap.set(flatCityCenterData);
-
-  const flatActionOrderData = actionOrder;
-  const ActionOrderData = wasmModule._malloc(flatActionOrderData.length * 4);
-  const ActionOrderHeap = new Int32Array(wasmModule.HEAP32.buffer, ActionOrderData, numActions);
-  ActionOrderHeap.set(flatActionOrderData);
-
+  new Int32Array(wasmModule.HEAP32.buffer, mapDataPtr, rows * cols).set(flatGrid);
+  const flatCC = cityCenters.flatMap(cc => [cc.r, cc.c]);
+  const CityCenterData = wasmModule._malloc(flatCC.length * 4);
+  new Int32Array(wasmModule.HEAP32.buffer, CityCenterData, flatCC.length).set(flatCC);
+  const ActionOrderData = wasmModule._malloc(numActions * 4);
+  new Int32Array(wasmModule.HEAP32.buffer, ActionOrderData, numActions).set(actionOrder);
   let resultPtr = 0;
   try {
     resultPtr = wasmModule._findBestMarketLayout_wasm(mapDataPtr, rows, cols, CityCenterData, numCities, ActionOrderData, numActions);
   } catch (e) {
     console.error(e);
     alert(`Calculation failed: ${e && e.message ? e.message : e}`);
-    wasmModule._free(mapDataPtr);
-    wasmModule._free(CityCenterData);
-    wasmModule._free(ActionOrderData);
+    wasmModule._free(mapDataPtr); wasmModule._free(CityCenterData); wasmModule._free(ActionOrderData);
     return;
   }
-  wasmModule._free(mapDataPtr);
-  wasmModule._free(CityCenterData);
-  wasmModule._free(ActionOrderData);
-
-  if (!resultPtr) {
-    alert('WASM did not return a layout (null pointer).');
-    return;
-  }
-
+  wasmModule._free(mapDataPtr); wasmModule._free(CityCenterData); wasmModule._free(ActionOrderData);
+  if (!resultPtr) { alert('WASM did not return a layout (null pointer).'); return; }
   const resultFlat = new Int32Array(rows * cols);
   resultFlat.set(new Int32Array(wasmModule.HEAP32.buffer, resultPtr, rows * cols));
   wasmModule._free(resultPtr);
-
   const pinViolation = validateWasmPinnedBuildingsMarkets(resultFlat, rows, cols);
   if (pinViolation) {
     const { r, c, expected, got } = pinViolation;
-    alert(
-      `Solver output changed an existing windmill or market at row ${r}, col ${c} ` +
-        `(expected ${tileTypeName(expected)}, got ${tileTypeName(got)}). ` +
-        `That is not supported here; existing buildings and markets must stay fixed.`
-    );
-    renderDebug();
-    render();
+    alert(`Solver output changed an existing windmill or market at row ${r}, col ${c} ` +
+      `(expected ${tileTypeName(expected)}, got ${tileTypeName(got)}). ` +
+      `Existing buildings and markets must stay fixed.`);
+    renderDebug(); render();
     return;
   }
-
-  const placementDiff = buildWasmPlacementDiff(resultFlat, rows, cols);
-  if (!wasmDiffHasAnyPlacement(placementDiff)) {
-    alert('No new windmill or market placements differ from your grid.');
-    renderDebug();
-    render();
-    return;
+  const placementDiff = Array.from({ length: rows }, () => Array(cols).fill(null));
+  let any = false;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const rt = resultFlat[r * cols + c];
+      if ((rt === 4 || rt === 5) && grid[r][c] !== rt) { placementDiff[r][c] = rt; any = true; }
+    }
   }
-
+  if (!any) { alert('No new windmill or market placements differ from your grid.'); renderDebug(); render(); return; }
   pushUndoSnapshot();
-  applyWasmPlacementDiffToGrid(placementDiff, rows, cols);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const t = placementDiff[r][c];
+    if (t === 4 || t === 5) grid[r][c] = t;
+  }
   renderDebug();
   render();
   scheduleWasmPlacementPurpleFlash(placementDiff, rows, cols);
 };
 
-document.getElementById('undo-btn').onclick = () => undoOnce();
-
-document.getElementById('clear-btn').onclick = () => {
+$('undo-btn').onclick = () => undoOnce();
+$('clear-btn').onclick = () => {
   if (confirm('Reset to 3x3 grid?')) {
     resetUndoHistory();
     grid = [newRow(3), newRow(3), newRow(3)];
-    cityCenters = [];
-    actionOrder = [];
-    tilesOwnedByCity = {};
-    renderDebug();
-    render();
+    cityCenters = []; actionOrder = []; tilesOwnedByCity = {};
+    renderDebug(); render();
   }
 };
 
 function renderDebug() {
-  // cityCenters
-  const ccEl = document.getElementById('dbg-city-centers');
-  if (cityCenters.length === 0) {
-    ccEl.innerHTML = `<span class="debug-inline">[]</span>`;
-  } else {
-    ccEl.innerHTML = cityCenters.map((cc, i) =>
-      `<span class="debug-key">[${i}]</span> <span class="debug-inline">{r: <span class="debug-num">${cc.r}</span>, c: <span class="debug-num">${cc.c}</span>}</span>`
-    ).join('<br>');
-  }
-
-  // actionOrder
-  const aoEl = document.getElementById('dbg-action-order');
-  if (actionOrder.length === 0) {
-    aoEl.innerHTML = `<span class="debug-inline">[]</span>`;
-  } else {
-    aoEl.innerHTML = `[<span class="debug-num">${actionOrder.join('</span>, <span class="debug-num">')}</span>]`;
-  }
-
-  // tilesOwnedByCity
-  const toEl = document.getElementById('dbg-tiles-owned');
-  const idxs = Object.keys(tilesOwnedByCity);
-  if (idxs.length === 0) {
-    toEl.innerHTML = `<span class="debug-inline">{}</span>`;
-  } else {
-    toEl.innerHTML = idxs.map(idx => {
-      const tiles = tilesOwnedByCity[idx];
-      const pairs = tiles.map(t => `<span class="debug-inline">[<span class="debug-num">${t.r}</span>,<span class="debug-num">${t.c}</span>]</span>`).join(' ');
-      return `<span class="debug-key">[${idx}]</span> (${tiles.length}): ${pairs}`;
-    }).join('<br>');
-  }
-
-  // grid
-  const gridEl = document.getElementById('dbg-grid');
-  gridEl.innerHTML = grid.map(row => {
-    const cells = row.map(v => {
-      let cls = 'debug-grid-cell';
-      if (v === 8)  cls += ' city-small';
-      if (v === 9) cls += ' city-big';
-      return `<span class="${cls}">${tileNames[v]}</span>`;
-    }).join('');
-    return `<div class="debug-grid-row">${cells}</div>`;
-  }).join('');
-
+  const ccEl = $('dbg-city-centers');
+  ccEl.innerHTML = cityCenters.length === 0 ? '<span class="debug-inline">[]</span>'
+    : cityCenters.map((cc, i) => `<span class="debug-key">[${i}]</span> <span class="debug-inline">{r: <span class="debug-num">${cc.r}</span>, c: <span class="debug-num">${cc.c}</span>}</span>`).join('<br>');
+  const aoEl = $('dbg-action-order');
+  aoEl.innerHTML = actionOrder.length === 0 ? '<span class="debug-inline">[]</span>'
+    : `[<span class="debug-num">${actionOrder.join('</span>, <span class="debug-num">')}</span>]`;
+  const toEl = $('dbg-tiles-owned'), idxs = Object.keys(tilesOwnedByCity);
+  toEl.innerHTML = idxs.length === 0 ? '<span class="debug-inline">{}</span>'
+    : idxs.map(idx => {
+        const tiles = tilesOwnedByCity[idx];
+        return `<span class="debug-key">[${idx}]</span> (${tiles.length}): ${tiles.map(t => `<span class="debug-inline">[<span class="debug-num">${t.r}</span>,<span class="debug-num">${t.c}</span>]</span>`).join(' ')}`;
+      }).join('<br>');
+  $('dbg-grid').innerHTML = grid.map(row => `<div class="debug-grid-row">${row.map(v => {
+    let cls = 'debug-grid-cell';
+    if (v === 8) cls += ' city-small';
+    if (v === 9) cls += ' city-big';
+    return `<span class="${cls}">${tileNames[v]}</span>`;
+  }).join('')}</div>`).join('');
 }
 
 window.addEventListener('resize', render);
