@@ -3,15 +3,11 @@
 
 #include <iostream>
 #include <vector>
-#include <unordered_map>
 #include <functional>
 #include <utility>
-#include <unordered_set>
 
 using std::pair;
 using std::vector;
-using std::unordered_map;
-using std::unordered_set;
 
 #define MAX_BUILDING_LEVEL 8
 #define MAX_MARKET_LEVEL 8
@@ -24,6 +20,8 @@ constexpr int RESOURCE = 3;
 constexpr int BUILDING = 4;
 constexpr int MARKET = 5;
 constexpr int USED_RESOURCE = 6;
+
+
 
 
 struct TileState {
@@ -53,16 +51,6 @@ struct Coord {
 };
 
 
-
-namespace std {
-  template <>
-  struct hash<Coord> {
-    size_t operator()(const Coord& c) const {
-      return hash<long long>()(((long long)c.row << 32) | (c.col & 0xFFFFFFFF));
-    }
-  };
-}
-
 // State structure
 struct BacktrackState {
     // EVERYTHING MUST BE CONSISTENT WITH EACH OTHER
@@ -74,7 +62,7 @@ struct BacktrackState {
     const vector<Coord>& cityCenters; 
 
     // tilesOwnedByCity[cityId] gives list of coordinates
-    const unordered_map<int, vector<Coord>>& tilesOwnedByCity;
+    const vector<vector<Coord>>& tilesOwnedByCity;
 
     // Requires: quick access to buildings/markets per city for at most 1 checks
     //           quick access to buildings/markets per tile for adjacency checks
@@ -95,7 +83,25 @@ struct BacktrackState {
     vector<int>& buildingLevelsCurrent;
 };
 
-
+inline void prettyPrint(const vector<vector<TileState>>& map) {
+  for (const auto& row : map) {
+    for (const auto& tile : row) {
+      char c;
+      switch (tile.type ) {
+        case EMPTY: c = '.'; break;
+        case CITY: c = 'C'; break;
+        case OBSTACLE: c = 'X'; break;
+        case RESOURCE: c = 'R'; break;
+        case BUILDING: c = 'B'; break;
+        case MARKET: c = 'M'; break;
+        case USED_RESOURCE: c = 'R'; break;
+        default: c = '?';
+      }
+      std::cout << c << " ";
+    }
+    std::cout << std::endl;
+  }
+}
 
 // Direction offsets for 8-neighbor adjacency
 constexpr int dx[] = {-1, -1, -1, 0, 0, 1, 1, 1};
@@ -220,11 +226,16 @@ At the end, calculate market total and update best layout if needed.
 Args:
 state: current backtracking state
       which should have consistent ownership, building placements, and market placements
-      and has a built in comparison operator
+
+      Data in the following fields will be destroyed and they will be used
+      bestLayoutReturn must have same dimensions as map
+      bestLayoutCurrent must have same dimensions as map
+      buildingLevelsCurrent must have same size as cityCenters
 cityIdx: which city we are currently trying to place a building/market for, corresponds to city ID
 placingBuilding: true if placing building, false if placing market
 
 Returns: best market total found
+  Best layout is stored in state.bestLayoutReturn
 */
 int backtrackPlacements(BacktrackState& state, int cityIdx, bool placingBuilding);
 
@@ -239,7 +250,9 @@ Rules:
 
 Args:
 state: current backtracking state
-buildingLevels: 
+  curBuidingsInCity and curMarketsInCity should be a superset of
+  all buildings and markets in the map
+  Use that to calculate
 
 Returns: total market level
 */

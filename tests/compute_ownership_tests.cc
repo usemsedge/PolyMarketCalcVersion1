@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+
+
 TEST(computeOwnership, AllCitiesGrow) {
   vector<vector<TileState>> map = makeNoSpecialMap();
   vector<Coord> cityCenters = makeNoSpecialCityCenters();
