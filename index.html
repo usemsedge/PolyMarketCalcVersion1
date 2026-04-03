@@ -98,11 +98,45 @@ body{background:#f0f0f0;display:flex;align-items:flex-start;justify-content:cent
 #calc-spinner{width:52px;height:52px;margin:0 auto 18px;border:4px solid #e3e8ef;border-top-color:#4285f4;border-radius:50%;animation:calcSpin .75s linear infinite}
 @keyframes calcSpin{to{transform:rotate(360deg)}}
 #calc-btn:disabled{opacity:.55;cursor:not-allowed}
+#usage-btn{flex-shrink:0;width:44px;height:44px;border-radius:50%;border:2px solid #5c6bc0;background:#e8eaf6;color:#3949ab;font:700 18px/1 system-ui,-apple-system,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+#usage-btn:hover{background:#c5cae9;border-color:#3949ab}
+#usage-modal{position:fixed;inset:0;z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+#usage-modal.hidden{display:none!important}
+#usage-modal .usage-modal__scrim{position:absolute;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(2px)}
+#usage-modal .usage-modal__panel{position:relative;z-index:1;max-width:28rem;width:100%;max-height:min(85vh,520px);overflow:auto;background:#fff;border:1px solid #ccc;border-radius:10px;padding:20px 22px 22px;box-shadow:0 12px 40px rgba(0,0,0,.18);color:#333;font:15px/1.55 system-ui,-apple-system,sans-serif}
+#usage-modal .usage-modal__title{margin:0 0 14px;font-size:1.15rem;font-weight:600;color:#1a237e;padding-right:36px}
+#usage-modal .usage-modal__body p{margin:0 0 10px}
+#usage-modal .usage-modal__body p:last-child{margin-bottom:0}
+#usage-modal .usage-modal__body hr{border:none;border-top:1px solid #e0e0e0;margin:16px 0}
+#usage-modal .usage-modal__body strong{color:#3949ab}
+#usage-modal .usage-modal__close{position:absolute;top:12px;right:12px;width:36px;height:36px;border:none;border-radius:6px;background:#f0f0f0;color:#444;font-size:22px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+#usage-modal .usage-modal__close:hover{background:#e0e0e0}
 </style>
 </head>
 <body>
 <div id="calc-overlay" class="hidden" aria-hidden="true" role="dialog" aria-busy="true" aria-label="Calculating">
 <div id="calc-overlay-inner"><div id="calc-spinner"></div><div>Calculating…</div></div>
+</div>
+<div id="usage-modal" class="hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="usage-dialog-title">
+<div class="usage-modal__scrim" id="usage-modal-scrim"></div>
+<div class="usage-modal__panel">
+<button type="button" class="usage-modal__close" id="usage-modal-close" aria-label="Close">×</button>
+<h2 id="usage-dialog-title" class="usage-modal__title">How to use</h2>
+<div class="usage-modal__body">
+<p>Select a tile type from the right sidebar.</p>
+<p>Click the map’s tiles to change them.</p>
+<p>Click the <strong>+</strong> on each side to expand the map.</p>
+<p>Use <strong>UNDO</strong> and <strong>CLEAR</strong> buttons when needed.</p>
+<p>Click <strong>Calculate</strong> to find the best possible market layout.</p>
+<hr>
+<p><strong>To upgrade cities:</strong></p>
+<p>Select the <strong>Upgrade</strong> tool in the sidebar.<br>
+  Click a <strong>village</strong> to turn it into a <strong>small city</strong> (3×3 border).<br>
+  Click a <strong>small city</strong> to expand to a <strong>big city</strong> (5×5 border). <br>
+  Polytopia rules are upheld (cities which expand earlier get contested tiles).<br>
+  Existing cities cannot be overwritten with other tile tools, and you must <strong>Undo</strong> or <strong>Clear</strong> them.
+</div>
+</div>
 </div>
 <div id="outer">
 <div id="top-row">
@@ -131,7 +165,7 @@ body{background:#f0f0f0;display:flex;align-items:flex-start;justify-content:cent
 <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="20" stroke="#e53935" stroke-width="4"/><line x1="10" y1="38" x2="38" y2="10" stroke="#e53935" stroke-width="4" stroke-linecap="round"/></svg>
 </button></div></div></div>
 </div></div>
-<div id="bottom-bar"><div id="calc-bar-group"><div id="calc-best-total" aria-live="polite"><span class="calc-best-label">Best market total</span><strong id="calc-best-total-value">—</strong></div><button type="button" id="calc-btn" disabled title="Loading solver…">Calculate</button></div></div>
+<div id="bottom-bar"><div id="calc-bar-group"><button type="button" id="usage-btn" title="How to use" aria-haspopup="dialog" aria-controls="usage-modal">?</button><div id="calc-best-total" aria-live="polite"><span class="calc-best-label">Best market total</span><strong id="calc-best-total-value">—</strong></div><button type="button" id="calc-btn" disabled title="Loading solver…">Calculate</button></div></div>
 <div id="debug-panel">
 <div class="debug-title">Debug</div>
 <div class="debug-block"><div class="debug-label">cityCenters</div><div id="dbg-city-centers"></div></div>
@@ -207,7 +241,32 @@ function initCalcWorker() {
   };
 }
 
+function initUsageModal() {
+  const modal = $('usage-modal');
+  const scrim = $('usage-modal-scrim');
+  const closeBtn = $('usage-modal-close');
+  const openBtn = $('usage-btn');
+  if (!modal || !scrim || !closeBtn || !openBtn) return;
+  const open = () => {
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    closeBtn.focus();
+  };
+  const close = () => {
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    openBtn.focus();
+  };
+  openBtn.addEventListener('click', open);
+  closeBtn.addEventListener('click', close);
+  scrim.addEventListener('click', close);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.classList.contains('hidden')) close();
+  });
+}
+
 initCalcWorker();
+initUsageModal();
 
 const F = 'img/field.png', W = 'img/water.png';
 const tileBg = { ...Object.fromEntries([0,1,2,3,4,5,6,8,9].map(k => [k, F])), 7: W };
