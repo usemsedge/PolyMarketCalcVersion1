@@ -128,6 +128,10 @@ body{background:#f0f0f0;display:flex;align-items:flex-start;justify-content:cent
 <p>Click the <strong>+</strong> on each side to expand the map.</p>
 <p>Use <strong>UNDO</strong> and <strong>CLEAR</strong> buttons when needed.</p>
 <p>Click <strong>Calculate</strong> to find the best possible market layout.</p>
+<p>To use for buildings/resources other than windmills/farms, make the following substitutions: 
+  <br>Math: Windmill -> Sawmill, Forest -> Crop, Lumber Hut -> Farm
+  <br>Smithery: Windmill -> Forge, Metal -> Crop, Mine -> Farm
+</p>
 <hr>
 <p><strong>To upgrade cities:</strong></p>
 <p>Select the <strong>Upgrade</strong> tool in the sidebar.<br>
@@ -135,6 +139,17 @@ body{background:#f0f0f0;display:flex;align-items:flex-start;justify-content:cent
   Click a <strong>small city</strong> to expand to a <strong>big city</strong> (5×5 border). <br>
   Polytopia rules are upheld (cities which expand earlier get contested tiles).<br>
   Existing cities cannot be overwritten with other tile tools, and you must <strong>Undo</strong> or <strong>Clear</strong> them.
+
+<hr>
+<p><strong>What this can and can't do</strong></p>
+<strong>Can:</strong> <br>
+Given a map and a city capture/border growth order, find the market layout with the highest total market sum for a single resource/building pair.
+<br>
+<strong>Can't:</strong> (for now)<br>
+Find the best border growth order<br>
+Use 2 or more resources/building pairs (sorry xin)<br>
+Optimize for anything else (like hanging population)
+
 </div>
 </div>
 </div>
