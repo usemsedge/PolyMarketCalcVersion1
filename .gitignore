@@ -8,6 +8,8 @@ marketcalc_tests
 # Emscripten outputs (regenerate with `make wasm` or `make run`)
 marketcalc.js
 marketcalc.wasm
+marketcalc.profile.wasm
+marketcalc.wasm.map
 
 # macOS
 .DS_Store

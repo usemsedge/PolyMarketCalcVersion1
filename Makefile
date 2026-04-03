@@ -11,16 +11,18 @@ SRC = $(TEST_SRC) tests/test_main.cc marketcalc.cc
 EMCC ?= emcc
 WASM_JS = marketcalc.js
 # Sync with extern "C" in marketcalc.cc. Use _main_wasm here only if you define it.
-# -g + --profiling-funcs: wasm "name" section for Firefox Profiler (C++ symbol names).
-# -gsource-map: .wasm.map for DevTools source-level view (serve beside .wasm).
-EMFLAGS = -std=c++17 -O2 -g -gsource-map --profiling-funcs \
+# -g + -gsource-map: .wasm.map for DevTools source-level view (serve beside .wasm).
+# --profiling-funcs: wasm "name" section (C++ symbol names) for Firefox Profiler — only in `make dev`.
+EMFLAGS_COMMON = -std=c++17 -O2 -g -gsource-map \
 	-s MODULARIZE=1 \
 	-s EXPORT_NAME=createModule \
 	-s EXPORT_ES6=1 \
 	-s EXPORTED_FUNCTIONS='["_malloc","_free","_findBestMarketLayout_wasm"]' \
 	-s EXPORTED_RUNTIME_METHODS='["HEAP32"]'
 
-.PHONY: all test run clean wasm
+EMFLAGS = $(EMFLAGS_COMMON)
+
+.PHONY: all test run dev clean wasm wasm-dev
 
 all: $(TARGET)
 
@@ -35,9 +37,17 @@ $(WASM_JS): marketcalc.cc marketcalc.h
 
 wasm: $(WASM_JS)
 
-run: $(WASM_JS)
+wasm-dev:
+	$(EMCC) marketcalc.cc -o $(WASM_JS) $(EMFLAGS_COMMON) --profiling-funcs
+
+run: wasm
+	node server.js
+
+dev: wasm-dev
 	node server.js
 
 clean:
-	rm -f $(TARGET) $(WASM_JS) marketcalc.wasm marketcalc.wasm.map
-	rm -rf marketcalc_tests.dSYM
+	rm -f $(TARGET) $(WASM_JS) \
+		marketcalc.wasm marketcalc.wasm.map \
+		marketcalc.profile.js marketcalc.profile.wasm marketcalc.profile.wasm.map
+	find . -maxdepth 1 -name '*.dSYM' -type d -exec rm -rf {} +

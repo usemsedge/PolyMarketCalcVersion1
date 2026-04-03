@@ -12,6 +12,16 @@ using std::vector;
 #define MAX_BUILDING_LEVEL 8
 #define MAX_MARKET_LEVEL 8
 
+
+
+/*
+Future tiles: tiles have 3 separate attributes
+1. base tile (field, water, mountain)
+2. tile modifier (forest, crop, metal)
+3. tile feature (market, building, forge, mine, farm, lumber hut, etc.)
+      unused: (fruit, animal, fish, etc.)
+*/
+
 // Tile type constants
 constexpr int EMPTY = 0;
 constexpr int CITY = 1;

@@ -39,6 +39,12 @@ body{background:#f0f0f0;display:flex;align-items:flex-start;justify-content:cent
 .cell .cell-bg,.cell .cell-overlay{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;display:block}
 .cell .cell-bg{z-index:1}
 .cell .cell-overlay{z-index:2}
+.cell.cell--city-tile{overflow:visible;z-index:2}
+.cell .cell-overlay.cell-overlay--city{width:116%;height:116%;left:50%;top:auto;bottom:0;transform:translateX(-50%);object-fit:contain;object-position:center bottom}
+#selected-box.selected-has-city{overflow:visible}
+#selected-box .si-overlay.si-overlay--city{width:116%;height:116%;left:50%;top:auto;bottom:0;transform:translateX(-50%);object-fit:contain;object-position:center bottom}
+.sidebar-item.sidebar-city-tile{overflow:visible}
+.sidebar-item .si-overlay.si-overlay--city{width:116%;height:116%;left:50%;top:auto;bottom:0;transform:translateX(-50%);object-fit:contain;object-position:center bottom}
 #sidebar{flex-shrink:0;background:#fff;border:1px solid #ccc;display:flex;flex-direction:column;align-items:stretch;padding:8px;gap:6px;overflow-y:auto}
 .sidebar-label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em}
 #selected-row{display:flex;justify-content:center;padding-bottom:6px;border-bottom:1px solid #ddd;margin-bottom:2px}
@@ -55,6 +61,10 @@ body{background:#f0f0f0;display:flex;align-items:flex-start;justify-content:cent
 .si-bg{z-index:1}
 .si-overlay{z-index:2}
 #bottom-bar{background:#fff;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;width:100%;padding:8px 12px}
+#calc-bar-group{display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center}
+#calc-best-total{display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:10em;padding:10px 16px;border:2px solid #c5cae9;border-radius:8px;background:#f8f9ff;font:600 18px system-ui,-apple-system,sans-serif;color:#333;line-height:1.2}
+#calc-best-total .calc-best-label{color:#5c6bc0;font-weight:500;font-size:15px;margin-right:0}
+#calc-best-total strong{font-weight:700;font-size:22px;color:#1a237e;letter-spacing:.02em}
 #calc-btn{padding:0 32px;height:44px;background:#4285f4;color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:500;cursor:pointer;letter-spacing:.02em}
 #calc-btn:hover{background:#3071e8}
 #calc-btn:active{transform:scale(.98)}
@@ -82,9 +92,18 @@ body{background:#f0f0f0;display:flex;align-items:flex-start;justify-content:cent
 .debug-inline{color:#ce9178}
 .debug-num{color:#b5cea8}
 .debug-key{color:#9cdcfe}
+#calc-overlay{position:fixed;inset:0;background:rgba(255,255,255,.88);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+#calc-overlay.hidden{display:none!important}
+#calc-overlay-inner{text-align:center;color:#333;font:500 17px system-ui,-apple-system,sans-serif}
+#calc-spinner{width:52px;height:52px;margin:0 auto 18px;border:4px solid #e3e8ef;border-top-color:#4285f4;border-radius:50%;animation:calcSpin .75s linear infinite}
+@keyframes calcSpin{to{transform:rotate(360deg)}}
+#calc-btn:disabled{opacity:.55;cursor:not-allowed}
 </style>
 </head>
 <body>
+<div id="calc-overlay" class="hidden" aria-hidden="true" role="dialog" aria-busy="true" aria-label="Calculating">
+<div id="calc-overlay-inner"><div id="calc-spinner"></div><div>Calculating…</div></div>
+</div>
 <div id="outer">
 <div id="top-row">
 <div id="root">
@@ -112,7 +131,7 @@ body{background:#f0f0f0;display:flex;align-items:flex-start;justify-content:cent
 <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="20" stroke="#e53935" stroke-width="4"/><line x1="10" y1="38" x2="38" y2="10" stroke="#e53935" stroke-width="4" stroke-linecap="round"/></svg>
 </button></div></div></div>
 </div></div>
-<div id="bottom-bar"><button type="button" id="calc-btn">Calculate</button></div>
+<div id="bottom-bar"><div id="calc-bar-group"><div id="calc-best-total" aria-live="polite"><span class="calc-best-label">Best market total</span><strong id="calc-best-total-value">—</strong></div><button type="button" id="calc-btn" disabled title="Loading solver…">Calculate</button></div></div>
 <div id="debug-panel">
 <div class="debug-title">Debug</div>
 <div class="debug-block"><div class="debug-label">cityCenters</div><div id="dbg-city-centers"></div></div>
@@ -122,10 +141,73 @@ body{background:#f0f0f0;display:flex;align-items:flex-start;justify-content:cent
 </div>
 </div>
 <script type="module">
-import createModule from './marketcalc.js';
 const $ = id => document.getElementById(id);
-let wasmModule, wasmPurpleFlashTimeoutId = null;
-createModule().then(m => { wasmModule = m; }).catch(e => console.error(e));
+let wasmPurpleFlashTimeoutId = null;
+let calcWorker = null;
+let calcWorkerReady = false;
+let calcInProgress = false;
+
+function showCalcOverlay() {
+  const o = $('calc-overlay');
+  o.classList.remove('hidden');
+  o.setAttribute('aria-hidden', 'false');
+}
+function hideCalcOverlay() {
+  const o = $('calc-overlay');
+  o.classList.add('hidden');
+  o.setAttribute('aria-hidden', 'true');
+}
+
+function initCalcWorker() {
+  try {
+    calcWorker = new Worker(new URL('marketcalc-calc-worker.js', import.meta.url), { type: 'module' });
+  } catch (e) {
+    console.error(e);
+    alert('Could not start calculation worker: ' + (e && e.message ? e.message : e));
+    return;
+  }
+  calcWorker.onmessage = (ev) => {
+    const m = ev.data;
+    if (m.type === 'ready') {
+      calcWorkerReady = true;
+      const btn = $('calc-btn');
+      if (btn) { btn.disabled = false; btn.title = ''; }
+      return;
+    }
+    if (m.type === 'initError') {
+      console.error('Worker WASM init failed:', m.message);
+      alert('Failed to load solver in worker: ' + m.message);
+      return;
+    }
+    if (m.type === 'error') {
+      hideCalcOverlay();
+      calcInProgress = false;
+      const btn = $('calc-btn');
+      if (btn) btn.disabled = false;
+      alert('Calculation failed: ' + m.message);
+      return;
+    }
+    if (m.type === 'ok') {
+      hideCalcOverlay();
+      calcInProgress = false;
+      const v = $('calc-best-total-value');
+      if (v && typeof m.bestMarketTotal === 'number') v.textContent = String(m.bestMarketTotal);
+      applyWasmResultFromWorker(m.result);
+      const btn = $('calc-btn');
+      if (btn) btn.disabled = false;
+    }
+  };
+  calcWorker.onerror = (e) => {
+    console.error(e);
+    hideCalcOverlay();
+    calcInProgress = false;
+    const btn = $('calc-btn');
+    if (btn) btn.disabled = false;
+    alert('Worker error: ' + (e && e.message ? e.message : 'unknown'));
+  };
+}
+
+initCalcWorker();
 
 const F = 'img/field.png', W = 'img/water.png';
 const tileBg = { ...Object.fromEntries([0,1,2,3,4,5,6,8,9].map(k => [k, F])), 7: W };
@@ -136,8 +218,8 @@ const tileOverlay = {
 const tileNames = { 0:'field',1:'village',2:'mountain',3:'crop',4:'windmill',5:'market',6:'farm',7:'water',8:'small_city',9:'big_city' };
 const upgradeChain = { 1: 8, 8: 9 };
 const sidebarCols = [[0, 7, 2], [3, 6, 4], [1, 'upgrade', 5]];
-const CITY_COLORS = ['#000000', '#1a237e', '#b71c1c', '#1b5e20', '#e65100', '#4a148c', '#006064', '#3e2723'];
 const cityTiles = new Set([8, 9]);
+const cityShapeOverlay = new Set([8, 9]);
 
 let cityCenters = [], actionOrder = [], tilesOwnedByCity = {}, selectedVal = 1, cellSize = 100;
 function newRow(len) { return Array.from({ length: len }, () => 0); }
@@ -176,8 +258,9 @@ function undoOnce() {
 function isUpgradeTool() { return selectedVal === 'upgrade'; }
 function tileInnerHTML(val) {
   if (val === 'upgrade') return '<img src="img/upgrade.png" alt="" style="width:100%;height:100%;object-fit:contain">';
+  const cityOv = cityShapeOverlay.has(val) ? ' si-overlay--city' : '';
   return (tileBg[val] ? `<img class="si-bg" src="${tileBg[val]}" alt="">` : '') +
-    (tileOverlay[val] ? `<img class="si-overlay" src="${tileOverlay[val]}" alt="">` : '');
+    (tileOverlay[val] ? `<img class="si-overlay${cityOv}" src="${tileOverlay[val]}" alt="">` : '');
 }
 function buildSidebar() {
   const tileCols = $('tile-cols');
@@ -188,7 +271,8 @@ function buildSidebar() {
     col.forEach(val => {
       const item = document.createElement('div');
       const isUp = val === 'upgrade';
-      item.className = 'sidebar-item' + (isUp ? ' upgrade-tool' : '') + (val === selectedVal ? ' active' : '');
+      const citySide = !isUp && cityShapeOverlay.has(val);
+      item.className = 'sidebar-item' + (isUp ? ' upgrade-tool' : '') + (citySide ? ' sidebar-city-tile' : '') + (val === selectedVal ? ' active' : '');
       item.dataset.val = val;
       item.innerHTML = tileInnerHTML(val);
       item.title = isUp ? 'Upgrade: village → small city → big city' : (tileNames[val] || '');
@@ -204,7 +288,12 @@ function selectTile(val) {
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.val == selectedVal));
   updateSelectedBox();
 }
-function updateSelectedBox() { $('selected-box').innerHTML = tileInnerHTML(selectedVal); }
+function updateSelectedBox() {
+  const box = $('selected-box');
+  box.innerHTML = tileInnerHTML(selectedVal);
+  const isCityShape = selectedVal !== 'upgrade' && cityShapeOverlay.has(selectedVal);
+  box.classList.toggle('selected-has-city', !!isCityShape);
+}
 function cityIdxAt(r, c) { return cityCenters.findIndex(cc => cc.r === r && cc.c === c); }
 function allOwnedSet() {
   const s = new Set();
@@ -294,8 +383,14 @@ function render() {
       cell.className = 'cell';
       cell.style.width = cell.style.height = cellSize + 'px';
       if ((isUpgradeTool() && !canUpgrade(val)) || (!isUpgradeTool() && cityTiles.has(val))) cell.classList.add('no-upgrade');
+      if (cityShapeOverlay.has(val)) cell.classList.add('cell--city-tile');
       if (tileBg[val]) { const bg = document.createElement('img'); bg.className = 'cell-bg'; bg.src = tileBg[val]; cell.appendChild(bg); }
-      if (tileOverlay[val]) { const ov = document.createElement('img'); ov.className = 'cell-overlay'; ov.src = tileOverlay[val]; cell.appendChild(ov); }
+      if (tileOverlay[val]) {
+        const ov = document.createElement('img');
+        ov.className = 'cell-overlay' + (cityShapeOverlay.has(val) ? ' cell-overlay--city' : '');
+        ov.src = tileOverlay[val];
+        cell.appendChild(ov);
+      }
       cell.addEventListener('click', () => handleCellClick(r, c));
       container.appendChild(cell);
     }
@@ -315,11 +410,10 @@ function renderBorders() {
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.innerHTML = '';
   const stroke = Math.max(3, Math.round(cellSize * 0.1));
-  Object.entries(tilesOwnedByCity).forEach(([idxStr, tiles]) => {
-    const idx = parseInt(idxStr, 10);
+  Object.entries(tilesOwnedByCity).forEach(([, tiles]) => {
     const inBounds = tiles.filter(t => t.r >= 0 && t.r < rows && t.c >= 0 && t.c < cols);
     if (inBounds.length === 0) return;
-    const owned = new Set(tiles.map(t => `${t.r},${t.c}`)), color = CITY_COLORS[idx % CITY_COLORS.length];
+    const owned = new Set(tiles.map(t => `${t.r},${t.c}`));
     const segments = [];
     inBounds.forEach(({ r, c }) => {
       const x = c * cellSize, y = r * cellSize;
@@ -332,7 +426,7 @@ function renderBorders() {
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       line.setAttribute('x1', x1); line.setAttribute('y1', y1);
       line.setAttribute('x2', x2); line.setAttribute('y2', y2);
-      line.setAttribute('stroke', color);
+      line.setAttribute('stroke', '#000000');
       line.setAttribute('stroke-width', stroke);
       line.setAttribute('stroke-linecap', 'square');
       svg.appendChild(line);
@@ -379,45 +473,8 @@ function scheduleWasmPlacementPurpleFlash(placementDiff, rows, cols) {
   }, 2000);
 }
 
-$('top-plus').onclick  = () => { pushUndoSnapshot(); grid.unshift(newRow(grid[0].length)); shiftCityCenters(1, 0); renderDebug(); render(); };
-$('bot-plus').onclick  = () => { pushUndoSnapshot(); grid.push(newRow(grid[0].length)); renderDebug(); render(); };
-$('left-plus').onclick = () => { pushUndoSnapshot(); grid.forEach(r => r.unshift(0)); shiftCityCenters(0, 1); renderDebug(); render(); };
-$('right-plus').onclick= () => { pushUndoSnapshot(); grid.forEach(r => r.push(0)); renderDebug(); render(); };
-
-$('calc-btn').onclick = () => {
-  if (!wasmModule) { alert('WASM Module is still loading. Please wait.'); return; }
-  const rows = grid.length, cols = grid[0].length, flatGrid = grid.flat();
-  if (flatGrid.length !== rows * cols) { console.error('Grid flatten error'); return; }
-  const numCities = cityCenters.length;
-  if (numCities === 0) { alert('Add at least one city (use the upgrade tool on a village) before calculating.'); return; }
-  const numActions = actionOrder.length;
-  if (numActions === 0) { alert('No capture / border-growth order yet. Upgrade a village to small city first.'); return; }
-  for (let i = 0; i < flatGrid.length; i++) {
-    if (flatGrid[i] === 7) flatGrid[i] = 2;
-    else if (flatGrid[i] === 8) flatGrid[i] = 1;
-    else if (flatGrid[i] === 9) flatGrid[i] = 1;
-  }
-  const mapDataPtr = wasmModule._malloc(rows * cols * 4);
-  new Int32Array(wasmModule.HEAP32.buffer, mapDataPtr, rows * cols).set(flatGrid);
-  const flatCC = cityCenters.flatMap(cc => [cc.r, cc.c]);
-  const CityCenterData = wasmModule._malloc(flatCC.length * 4);
-  new Int32Array(wasmModule.HEAP32.buffer, CityCenterData, flatCC.length).set(flatCC);
-  const ActionOrderData = wasmModule._malloc(numActions * 4);
-  new Int32Array(wasmModule.HEAP32.buffer, ActionOrderData, numActions).set(actionOrder);
-  let resultPtr = 0;
-  try {
-    resultPtr = wasmModule._findBestMarketLayout_wasm(mapDataPtr, rows, cols, CityCenterData, numCities, ActionOrderData, numActions);
-  } catch (e) {
-    console.error(e);
-    alert(`Calculation failed: ${e && e.message ? e.message : e}`);
-    wasmModule._free(mapDataPtr); wasmModule._free(CityCenterData); wasmModule._free(ActionOrderData);
-    return;
-  }
-  wasmModule._free(mapDataPtr); wasmModule._free(CityCenterData); wasmModule._free(ActionOrderData);
-  if (!resultPtr) { alert('WASM did not return a layout (null pointer).'); return; }
-  const resultFlat = new Int32Array(rows * cols);
-  resultFlat.set(new Int32Array(wasmModule.HEAP32.buffer, resultPtr, rows * cols));
-  wasmModule._free(resultPtr);
+function applyWasmResultFromWorker(resultFlat) {
+  const rows = grid.length, cols = grid[0].length;
   const pinViolation = validateWasmPinnedBuildingsMarkets(resultFlat, rows, cols);
   if (pinViolation) {
     const { r, c, expected, got } = pinViolation;
@@ -444,6 +501,47 @@ $('calc-btn').onclick = () => {
   renderDebug();
   render();
   scheduleWasmPlacementPurpleFlash(placementDiff, rows, cols);
+}
+
+$('top-plus').onclick  = () => { pushUndoSnapshot(); grid.unshift(newRow(grid[0].length)); shiftCityCenters(1, 0); renderDebug(); render(); };
+$('bot-plus').onclick  = () => { pushUndoSnapshot(); grid.push(newRow(grid[0].length)); renderDebug(); render(); };
+$('left-plus').onclick = () => { pushUndoSnapshot(); grid.forEach(r => r.unshift(0)); shiftCityCenters(0, 1); renderDebug(); render(); };
+$('right-plus').onclick= () => { pushUndoSnapshot(); grid.forEach(r => r.push(0)); renderDebug(); render(); };
+
+$('calc-btn').onclick = () => {
+  if (!calcWorkerReady || !calcWorker) {
+    alert('Solver is still loading. Please wait a moment and try again.');
+    return;
+  }
+  if (calcInProgress) return;
+  const rows = grid.length, cols = grid[0].length, flatGrid = grid.flat();
+  if (flatGrid.length !== rows * cols) {
+    console.error('Grid flattening error: expected length', rows * cols, 'but got', flatGrid.length);
+    return;
+  }
+  const numCities = cityCenters.length;
+  if (numCities === 0) { alert('Add at least one city (use the upgrade tool on a village) before calculating.'); return; }
+  const numActions = actionOrder.length;
+  if (numActions === 0) { alert('No capture / border-growth order yet. Upgrade a village to small city first.'); return; }
+  for (let i = 0; i < flatGrid.length; i++) {
+    if (flatGrid[i] === 7) flatGrid[i] = 2;
+    else if (flatGrid[i] === 8) flatGrid[i] = 1;
+    else if (flatGrid[i] === 9) flatGrid[i] = 1;
+  }
+  const cityFlat = cityCenters.flatMap(cc => [cc.r, cc.c]);
+  calcInProgress = true;
+  $('calc-btn').disabled = true;
+  showCalcOverlay();
+  calcWorker.postMessage({
+    type: 'calculate',
+    rows,
+    cols,
+    flatGrid: Int32Array.from(flatGrid),
+    cityFlat: Int32Array.from(cityFlat),
+    actionOrder: Int32Array.from(actionOrder),
+    numCities,
+    numActions,
+  });
 };
 
 $('undo-btn').onclick = () => undoOnce();
@@ -452,6 +550,8 @@ $('clear-btn').onclick = () => {
     resetUndoHistory();
     grid = [newRow(3), newRow(3), newRow(3)];
     cityCenters = []; actionOrder = []; tilesOwnedByCity = {};
+    const tv = $('calc-best-total-value');
+    if (tv) tv.textContent = '—';
     renderDebug(); render();
   }
 };

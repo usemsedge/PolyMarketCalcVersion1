@@ -13,6 +13,7 @@
 // only if needed for debug
 #include <iomanip>
 #include <cstdint>
+#include <cstring>
 
 
 using std::vector;
@@ -458,11 +459,14 @@ extern "C" {
       structure: each integer is a city ID, actionOrderSize total length
 
     Returns:
-    pointer to 1d array of tiles (but with more markets and buildings), rows x cols total length
+    int: best market total
+    through resultLayoutData: pointer to 1d array of ints (tile types),
+        (but with more markets and buildings), rows x cols total length
     */
-    int32_t* findBestMarketLayout_wasm(int32_t* mapData, int32_t rows, int32_t cols, 
+    int32_t findBestMarketLayout_wasm(int32_t* mapData, int32_t rows, int32_t cols,
                                     int32_t* cityCenterData, int32_t numCities,
-                                    int32_t* actionOrderData, int32_t actionOrderSize) {
+                                    int32_t* actionOrderData, int32_t actionOrderSize,
+                                    int32_t* resultLayoutData) {
         std::cout << "Received map of size " << rows << "x" << cols << std::endl;
         vector<vector<int>> map(rows, vector<int32_t>(cols));
         for (int i = 0; i < rows; i++) {
@@ -517,7 +521,9 @@ extern "C" {
                 resultLayout[i * cols + j] = result.bestLayout[i][j].type;
             }
         }
-        return resultLayout;
+        memcpy(resultLayoutData, resultLayout, rows * cols * sizeof(int));
+        delete[] resultLayout;
+        return result.bestMarketTotal;
     }
 }
 
